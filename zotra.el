@@ -56,11 +56,18 @@ They take no arguments, and they can be used to
   :type 'string)
 
 
+(defcustom zotra-use-curl
+  nil
+  "Function for retrieving bibtex entries use `url-retrieve-synchronously',
+but it sometimes fails. An alternative is to use the external `curl' program
+to retrieve the data."
+  :group 'zotra
+  :type 'boolean)
 
 
 (defun zotra-get-json (url)
-  "Get citation data of URL in Zotero JSON format, using Zotero
-translation server."
+  "Get citation data of URL in Zotero JSON format, using url-retrieve-synchronously
+and Zotero translation server."
   (let*
       ((url-request-method "POST")
        (url-request-extra-headers '(("Content-Type" . "text/plain")))
@@ -79,8 +86,8 @@ translation server."
 
 
 (defun zotra-get-bibtex-from-json (json)
-  "Convert Zotero JSON format to bibtex, using Zotero translation
-server."
+  "Convert Zotero JSON format to bibtex, using url-retrieve-synchronously
+and Zotero translation server."
   (let*
       ((url-request-method "POST")
        (url-request-extra-headers '(("Content-Type" . "application/json")))
@@ -100,8 +107,11 @@ server."
 
 (defun zotra-get-bibtex (url)
   "Get bibtex data for URL using Zotero translation server."
-  (zotra-get-bibtex-from-json (zotra-get-json url)))
-
+  (if zotra-use-curl
+      (shell-command-to-string
+       (format "curl -s -d '%s' -H 'Content-Type: text/plain' '%s/web' | curl -s -d @- -H 'Content-Type: application/json' '%s/export?format=bibtex'"
+               url zotra-server-path zotra-server-path))
+    (zotra-get-bibtex-from-json (zotra-get-json url))))
 
 
 
