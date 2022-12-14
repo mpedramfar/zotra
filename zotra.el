@@ -66,20 +66,31 @@ They take no arguments, and they can be used to
   :type 'hook)
 
 
+(defcustom zotra-backend
+  'translation-server
+  "Backend used by zotra.
+TRANSLATION-SERVER: A local instance of translation server
+CURL_TRANSLATION-SERVER: External curl program and a local instance of translation server"
+  :group 'zotra
+  :type '(choice
+          (const translation-server)
+          (const curl_translation-server)))
+
+
 (defcustom zotra-server-path
   "http://127.0.0.1:1969"
-  "The url and the port of the Zotero translation server to be used, without a trailing slash mark."
+  "The url and the port of the Zotero translation server to be used, without a trailing slash mark.
+This is only relevant when `zotra-backend' is TRANSLATION-SERVER or CURL_TRANSLATION-SERVER"
   :group 'zotra
   :type 'string)
 
 
-(defcustom zotra-use-curl
-  nil
-  "Functions for retrieving citation entries use `url-retrieve-synchronously',
-but it sometimes fails. An alternative is to use the external ‘curl’ program
- to retrieve the data."
+(defcustom zotra-url-retrieve-timeout
+  3
+  "How many seconds to wait for server to get a response.
+This is only relevant when `zotra-backend' is TRANSLATION-SERVER or CURL_TRANSLATION-SERVER"
   :group 'zotra
-  :type 'boolean)
+  :type 'natnum)
 
 
 (defcustom zotra-default-entry-format
@@ -110,98 +121,126 @@ and https://github.com/zotero/translation-server/blob/master/src/formats.js"
   :type 'string)
 
 
-(defcustom zotra-url-retrieve-timeout
-  3
-  "How many seconds to wait for server to get a response."
+(defcustom zotra-multiple-item-strategy
+  'ask
+  "This variable determines how zotra handles a url
+that corresponds to multiple entries.
+SINGLE: capture the url as a single entry.
+MULTIPLE: ask user which entry in the page should be captures.
+ASK: ask user if the url should be captured as a single entry or not."
   :group 'zotra
-  :type 'natnum)
+  :type '(choice (const single) (const multiple) (const ask)))
 
+
+(defcustom zotra-protocol-multiple-item-strategy
+  'single
+  "This variable determines how zotra-protocol handles a url
+that corresponds to multiple entries.
+SINGLE: capture the url as a single entry.
+MULTIPLE: ask user which entry in the page should be captures.
+ASK: ask user if the url should be captured as a single entry or not."
+  :group 'zotra
+  :type '(choice (const single) (const multiple) (const ask)))
+
+
+
+(defun zotra-run-external-command (cmd-string &optional silent-error)
+  (let* ((stdout-buffer (get-buffer-create
+                         (generate-new-buffer-name "stdout")))
+         (stderr-buffer (get-buffer-create
+                         (generate-new-buffer-name "stderr")))
+         (return-code (shell-command cmd-string stdout-buffer stderr-buffer))
+         (out (with-current-buffer stdout-buffer (buffer-string)))
+         (err (with-current-buffer stderr-buffer (buffer-string))))
+    (kill-buffer stdout-buffer)
+    (kill-buffer stderr-buffer)
+    (if (= return-code 0)
+        out
+      (if (null silent-error)
+          (user-error err)
+        (message err)
+        nil))))
 
 
 (defun zotra-run-external-curl (data content-type url)
   (let* ((curl-cmd-string
           (format "curl --max-time '%s' -s --show-error -d '%s' -H 'Content-Type: %s' '%s'"
-                  zotra-url-retrieve-timeout data content-type url))
-         (stdout-buffer (get-buffer-create
-                         (generate-new-buffer-name "stdout")))
-         (stderr-buffer (get-buffer-create
-                         (generate-new-buffer-name "stderr")))
-         (return-code (shell-command curl-cmd-string stdout-buffer stderr-buffer))
-         (out (with-current-buffer stdout-buffer (buffer-string)))
-         (err (with-current-buffer stderr-buffer (buffer-string))))
-    (kill-buffer stdout-buffer)
-    (kill-buffer stderr-buffer)
-    (when (not (= return-code 0))
-      (user-error err))
-    out))
+                  zotra-url-retrieve-timeout data content-type url)))
+    (zotra-run-external-command curl-cmd-string)))
+
+
+(defun zotra-contact-server (data content-type endpoint &optional param)
+  (cond
+   ((equal zotra-backend 'curl_translation-server)
+    (zotra-run-external-curl data
+                             content-type
+                             (concat
+                              zotra-server-path "/" endpoint
+                              (when param (format "?%s=%s" (car param) (cdr param))))))
+   ((equal zotra-backend 'translation-server)
+    (let*
+        ((url-request-method "POST")
+         (url-request-extra-headers `(("Content-Type" . ,content-type)))
+         (url-request-data data)
+         (response-buffer (url-retrieve-synchronously
+                           (concat zotra-server-path "/" endpoint
+                                   (when param (format "?%s=%s" (car param) (cdr param))))
+                           nil nil zotra-url-retrieve-timeout))
+         (output
+          (if (null response-buffer)
+              (user-error "Request failed. If this issue persists, try changing `zotra-backend'.")
+            (with-current-buffer response-buffer
+              (goto-char (point-min))
+              (search-forward "\n\n")
+              (delete-region (point-min) (point))
+              (buffer-string)))))
+      (kill-buffer response-buffer)
+      output))))
 
 
 (defun zotra-get-json (url-or-search-string &optional is-search)
   "Get citation data of URL-OR-SEARCH-STRING in Zotero JSON format."
-  (let
-      ((json
-        (if zotra-use-curl
-            (zotra-run-external-curl url-or-search-string
-                                     "text/plain"
-                                     (concat zotra-server-path
-                                             (if is-search "/search" "/web")))
-          (let*
-              ((url-request-method "POST")
-               (url-request-extra-headers '(("Content-Type" . "text/plain")))
-               (url-request-data url-or-search-string)
-               (response-buffer (url-retrieve-synchronously
-                                 (concat zotra-server-path
-                                         (if is-search "/search" "/web"))
-                                 nil nil zotra-url-retrieve-timeout))
-               (output
-                (if (null response-buffer)
-                    (user-error "Request failed. If this issue persists, try again with `zotra-use-curl'.")
-                  (with-current-buffer response-buffer
-                    (goto-char (point-min))
-                    (search-forward "\n\n")
-                    (delete-region (point-min) (point))
-                    (buffer-string)))))
-            (kill-buffer response-buffer)
-            output))))
-    (cond ((string= json "URL not provided")
-           (user-error "URL not provided"))
-          ((string= json "No identifiers found")
-           (user-error "No identifiers found"))
-          (t json))))
+  (let* ((j (zotra-contact-server
+             url-or-search-string
+             "text/plain"
+             (if is-search "search" "web")
+             (when (and (eq zotra-multiple-item-strategy 'single)
+                        (not is-search))
+               '("single" . "1"))))
+         (p (json-parse-string j :object-type 'alist :array-type 'list))
+         (p-items (assoc 'items p)))
+    (cond
+     ((null p-items)
+      j)
+     ((and (not (eq zotra-multiple-item-strategy 'multiple))
+           (yes-or-no-p "Capture the page as a single item? "))
+      (zotra-contact-server
+       url-or-search-string
+       "text/plain" "web" '("single" . "1")))
+     (t
+      (let* ((candidates
+              (cl-loop
+               for item in (cdr p-items)
+               collect
+               (replace-regexp-in-string
+                "," ";" (format "%s --- %s" (car item) (cdr item)))))
+             (choices
+              (cl-loop
+               for c in (completing-read-multiple "Select: " candidates nil t)
+               collect
+               (nth (cl-position c candidates :test 'equal) (cdr p-items)))))
+        (setcdr p-items choices)
+        (zotra-contact-server (json-serialize p) "application/json" "web"))))))
 
 
 (defun zotra-get-entry-from-json (json &optional entry-format)
   "Convert Zotero JSON format to ENTRY-FORMAT or `zotra-default-entry-format'
-if ENTR_FORMAT is nil."
-  (let
-      ((entry
-        (if zotra-use-curl
-            (zotra-run-external-curl url-or-search-string
-                                     "application/json"
-                                     (concat zotra-server-path "/export?format="
-                                             (if (null entry-format)
-                                                 zotra-default-entry-format
-                                               entry-format)))
-          (let*
-              ((url-request-method "POST")
-               (url-request-extra-headers '(("Content-Type" . "application/json")))
-               (url-request-data json)
-               (response-buffer (url-retrieve-synchronously
-                                 (concat
-                                  zotra-server-path
-                                  "/export?format="
-                                  (if (null entry-format) zotra-default-entry-format entry-format))
-                                 nil nil zotra-url-retrieve-timeout))
-               (output
-                (if (null response-buffer)
-                    (user-error "Request failed. If this issue persists, try again with `zotra-use-curl'.")
-                  (with-current-buffer response-buffer
-                    (goto-char (point-min))
-                    (search-forward "\n\n")
-                    (delete-region (point-min) (point))
-                    (buffer-string)))))
-            (kill-buffer response-buffer)
-            output))))
+if ENTRY_FORMAT is nil."
+  (let* ((entry-format (if (null entry-format)
+                     zotra-default-entry-format
+                   entry-format))
+         (entry (zotra-contact-server
+                 json "application/json" "export" `("format" . ,entry-format))))
     (cond ((string= entry "Bad Request")
            (user-error "Bad Request"))
           ((string= entry "An error occurred during translation. Please check translation with the Zotero client.")
@@ -219,17 +258,20 @@ if ENTR_FORMAT is nil."
              (completing-read
               "Bibfile: "
               (append (directory-files "." t ".*\\.bib$")
-                      (org-cite-list-bibliography-files))))))
+                      (org-cite-list-bibliography-files)))))
+        (entry (zotra-get-entry url-or-search-string is-search entry-format)))
     (save-window-excursion
       (find-file bibfile)
       (goto-char (point-max))
       (when (not (looking-at "^")) (insert "\n"))
-      (insert (zotra-get-entry url-or-search-string is-search entry-format))
-      (save-excursion
-        (save-restriction
-          (bibtex-narrow-to-entry)
-          (bibtex-beginning-of-entry)
-          (run-hooks 'zotra-after-add-entry-hook)))
+      (save-excursion (insert entry))
+      (while (bibtex-next-entry)
+        (save-excursion
+          (save-restriction
+            (bibtex-narrow-to-entry)
+            (bibtex-beginning-of-entry)
+            (ignore-errors
+              (run-hooks 'zotra-after-add-entry-hook)))))
       (goto-char (point-max))
       (when (not (looking-at "^")) (insert "\n"))
       (save-buffer))))
@@ -277,7 +319,8 @@ If ENTRY-FORMAT is nil, use `zotra-default-entry-format'."
 (defun zotra-protocol (info)
   (let ((url (plist-get info :url))
         (bibfile (plist-get info :bibfile))
-        (entry-format (plist-get info :format)))
+        (entry-format (plist-get info :format))
+        (zotra-multiple-item-strategy zotra-protocol-multiple-item-strategy))
     (message (format "Zotra received: `%s' to be saved in `%s'" url bibfile))
     (zotra-add-entry-from-url url bibfile entry-format)
     nil))
