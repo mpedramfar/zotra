@@ -70,17 +70,26 @@ They take no arguments, and they can be used to
   'translation-server
   "Backend used by zotra.
 TRANSLATION-SERVER: A local instance of translation server
-CURL_TRANSLATION-SERVER: External curl program and a local instance of translation server"
+CURL_TRANSLATION-SERVER: External curl program and a local instance of translation server
+ZOTRA-CLI: The external zotra-cli program"
   :group 'zotra
   :type '(choice
           (const translation-server)
-          (const curl_translation-server)))
+          (const curl_translation-server)
+          (const zotra-cli)))
 
 
 (defcustom zotra-server-path
   "http://127.0.0.1:1969"
   "The url and the port of the Zotero translation server to be used, without a trailing slash mark.
 This is only relevant when `zotra-backend' is TRANSLATION-SERVER or CURL_TRANSLATION-SERVER"
+  :group 'zotra
+  :type 'string)
+
+
+(defcustom zotra-cli-command
+  "zotra"
+  "The command to run the external zotra-cli program"
   :group 'zotra
   :type 'string)
 
@@ -195,7 +204,19 @@ ASK: ask user if the url should be captured as a single entry or not."
               (delete-region (point-min) (point))
               (buffer-string)))))
       (kill-buffer response-buffer)
-      output))))
+      output))
+   ((equal zotra-backend 'zotra-cli)
+    (zotra-run-external-command
+     (format "%s %s %s '%s'"
+             zotra-cli-command
+             (if param
+                 (if (equal "single" (car param))
+                     "--single"
+                   (format "--%s=%s" (car param) (cdr param)))
+               (if (equal content-type "application/json")
+                   "--json" ""))
+             endpoint data)
+     t))))
 
 
 (defun zotra-get-json (url-or-search-string &optional is-search)
@@ -314,6 +335,21 @@ If ENTRY-FORMAT is nil, use `zotra-default-entry-format'."
           "search identifier (DOI, ISBN, PMID, arXiv ID): "
           (ignore-errors (current-kill 0 t)))))
   (zotra-add-entry identifier t bibfile entry-format))
+
+
+(defun zotra-get-attachments (data &optional endpoint json)
+  (let* ((endpoint (or endpoint "web"))
+         (cli-output (zotra-run-external-command
+                      (format "%s -a %s '%s' '%s'"
+                              zotra-cli-command
+                              (if json "-j" "")
+                              endpoint data)
+                      t)))
+     (cl-loop
+      for item in (split-string cli-output "\n")
+      for trimmed-item = (string-trim item)
+      if (not (equal trimmed-item ""))
+      collect trimmed-item)))
 
 
 (defun zotra-protocol (info)
