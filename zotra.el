@@ -163,12 +163,11 @@ ASK: ask user if the url should be captured as a single entry or not."
          (err (with-current-buffer stderr-buffer (buffer-string))))
     (kill-buffer stdout-buffer)
     (kill-buffer stderr-buffer)
-    (if (= return-code 0)
-        out
+    (when (not (= return-code 0))
       (if (null silent-error)
           (user-error err)
-        (message err)
-        nil))))
+        (message "%s" err)))
+    out))
 
 
 (defun zotra-run-external-curl (data content-type url)
