@@ -34,7 +34,7 @@ See [zotra-cli](https://github.com/mpedramfar/zotra-cli) repository for its inst
 This is the recommended backend to use with zotra as it has the option to fetch attachments corresponding to a url.
 
 ### Zotero translation server
-Download and run the [Zotero translation server](https://github.com/zotero/translation-server/).
+If you want to use `translation-server` or `curl_translation-server` as the backend, then download and run the [Zotero translation server](https://github.com/zotero/translation-server/).
 
 **Method 1: Using docker (easier to set up but uses more reources)**
 
