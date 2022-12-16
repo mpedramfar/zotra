@@ -22,36 +22,18 @@ There are 3 options for `zotra-backend`:
 
 Use the external [zotra-cli](https://github.com/mpedramfar/zotra-cli) library for translation.
 This is the recommended backend to use as **it is the only backend that is able to fetch attachments**.
+See [zotra-cli](https://github.com/mpedramfar/zotra-cli) repository for its installation guide.
 
 - `translation-server`
 
 Use emacs url libraries to connect to a running instance of zotero translation server.
+See [zotero translation server](https://github.com/zotero/translation-server/) repository for its installation guide.
+
 - `curl_translation-server`
 
 Use the external curl program to connect to a running instance of zotero translation server.
 Sometimes the previous backend fails. In this case you can try this backend.
-### **zotra-cli**
-See [zotra-cli](https://github.com/mpedramfar/zotra-cli) repository for its installation guide.
-This is the recommended backend to use with zotra as it has the option to fetch attachments corresponding to a url.
-
-### Zotero translation server
-If you want to use `translation-server` or `curl_translation-server` as the backend, then download and run the [Zotero translation server](https://github.com/zotero/translation-server/).
-
-**Method 1: Using docker (easier to set up but uses more reources)**
-
-The easiest way to install this is to install [docker](https://docs.docker.com/engine/install/) and run
-```bash
-docker pull zotero/translation-server
-docker run -d -p 1969:1969 --rm --name translation-server zotero/translation-server
-```
-If you want the translation server to always run (so that you wouldn't have to run it manually after each reboot), you can replace the second command with 
-```bash
-docker run --restart=always -d -p 1969:1969 --name translation-server zotero/translation-server
-```
-**Method 2: Using nodejs (more lightweight)**
-
-You can also run the translation server [without docker, using nodejs](https://github.com/zotero/translation-server/).
-
+To use this backend you need to install the zotero translation server and the curl program.
 ## Usage and configuration
 
 From inside emacs, run `zotra-add-entry-from-url`, then enter the url and choose the bibtex file to save into.
