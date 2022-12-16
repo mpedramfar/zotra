@@ -67,7 +67,7 @@ They take no arguments, and they can be used to
 
 
 (defcustom zotra-backend
-  'translation-server
+  'zotra-cli
   "Backend used by zotra.
 TRANSLATION-SERVER: A local instance of translation server
 CURL_TRANSLATION-SERVER: External curl program and a local instance of translation server
@@ -150,6 +150,14 @@ MULTIPLE: ask user which entry in the page should be captures.
 ASK: ask user if the url should be captured as a single entry or not."
   :group 'zotra
   :type '(choice (const single) (const multiple) (const ask)))
+
+
+(defcustom zotra-download-attachment-default-directory
+  "/tmp/zotra-attachment-dir"
+  "The default directory used to download attachments when
+using `zotra-download-attachment' or `zotra-open-attachment'."
+  :group 'zotra
+  :type 'string)
 
 
 
@@ -336,6 +344,9 @@ If ENTRY-FORMAT is nil, use `zotra-default-entry-format'."
   (zotra-add-entry identifier t bibfile entry-format))
 
 
+;; attachments
+
+
 (defun zotra-get-attachments (data &optional endpoint json)
   (let* ((endpoint (or endpoint "web"))
          (cli-output (zotra-run-external-command
@@ -349,6 +360,53 @@ If ENTRY-FORMAT is nil, use `zotra-default-entry-format'."
       for trimmed-item = (string-trim item)
       if (not (equal trimmed-item ""))
       collect trimmed-item)))
+
+
+(defun zotra-download-attachment (&optional url download-dir)
+  "Download the attachments for the URL to DOWNLOAD-DIR.
+If URL is nil and point is at an org-mode link, use the link.
+If DOWNLOAD-DIR is nil, use `zotra-download-attachment-default-directory'.
+If `zotra-download-attachment-default-directory' is also nil, prompt for the download directory."
+  (interactive)
+  (let* ((url (or url
+                  (read-string
+                   "url: "
+                   (let ((link (org-element-context)))
+                     (if (and link
+                              (eq (car link) 'link))
+                         (org-element-property :raw-link link)
+                       (ignore-errors (current-kill 0 t)))))))
+         (attachments (zotra-get-attachments url))
+         (attachment (if attachments
+                         (completing-read
+                          "Which attachment to open? "
+                          attachments nil t)
+                       (user-error "zotra failed to find any attachments in page")))
+         (download-dir (expand-file-name
+                        (or download-dir
+                            zotra-download-attachment-default-directory
+                            (read-directory-name
+                             "Where to save? "))))
+         (pdf (expand-file-name
+               (completing-read
+                "Rename attachment to: " nil nil nil
+                (last (split-string attachment "/" t)))
+               download-dir)))
+    (mkdir (file-name-directory pdf) t)
+    (url-copy-file attachment pdf 1)
+    pdf))
+
+
+(defun zotra-open-attachment (&optional url download-dir)
+  "Use `zotra-download-attachment' to download attachments and open them using `find-file'.
+See `zotra-download-attachment' for more details."
+  (interactive)
+  (let ((pdf (funcall #'zotra-download-attachment url download-dir)))
+    (when pdf
+      (find-file pdf))))
+
+
+;; zotra-protocol
 
 
 (defun zotra-protocol (info)
@@ -367,7 +425,6 @@ If ENTRY-FORMAT is nil, use `zotra-default-entry-format'."
                :function zotra-protocol))
 
 
-
 ;; zotra-url-cleanup-functions
 
 
@@ -378,7 +435,6 @@ If ENTRY-FORMAT is nil, use `zotra-default-entry-format'."
        "https://arxiv.org/abs/"
        (match-string-no-properties 3 url))
     url))
-
 
 
 ;;* The end
