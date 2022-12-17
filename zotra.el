@@ -171,10 +171,13 @@ using `zotra-download-attachment' or `zotra-open-attachment'."
          (err (with-current-buffer stderr-buffer (buffer-string))))
     (kill-buffer stdout-buffer)
     (kill-buffer stderr-buffer)
-    (when (not (= return-code 0))
-      (if (null silent-error)
-          (user-error err)
-        (message "%s" err)))
+    (if (and (not (= return-code 0))
+             (null silent-error))
+        (user-error
+         (if err
+             err
+           (format "'%s' failed with return code '%s'" cmd-string return-code)))
+      (when err (message "%s" err)))
     out))
 
 
