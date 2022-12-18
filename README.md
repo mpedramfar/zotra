@@ -39,9 +39,9 @@ To use this backend you need to install the zotero translation server and the cu
 From inside emacs, run `zotra-add-entry-from-url`, then enter the url and choose the bibtex file to save into.
 Alternatively, you can run `zotra-add-entry-from-search`, then enter the search identifier (DOI, ISBN, PMID, arXiv ID) and choose the bibtex file to save into.
 
-To download attachments from a url or search identifier, run `zotra-download-attachment-from-url`/`zotra-open-attachment-from-search`.
+To download attachments from a url or search identifier, run `zotra-download-attachment-from-url`/`zotra-download-attachment-from-search`.
 
-To download and open attachments from a url or search identifier, run `zotra-download-attachment-from-url`/`zotra-open-attachment-from-search`.
+To download and open attachments from a url or search identifier, run `zotra-open-attachment-from-url`/`zotra-open-attachment-from-search`.
 
 See `zotra` customization group for a complete list of options and their description.
 
