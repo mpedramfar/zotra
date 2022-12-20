@@ -393,7 +393,7 @@ If `zotra-download-attachment-default-directory' is also nil, prompt for the dow
          (pdf (expand-file-name
                (completing-read
                 "Rename attachment to: " nil nil nil
-                (last (split-string attachment "/" t)))
+                (car (last (split-string attachment "/" t))))
                download-dir)))
     (mkdir (file-name-directory pdf) t)
     (url-copy-file attachment pdf 1)
@@ -423,7 +423,7 @@ If `zotra-download-attachment-default-directory' is also nil, prompt for the dow
          (pdf (expand-file-name
                (completing-read
                 "Rename attachment to: " nil nil nil
-                (last (split-string attachment "/" t)))
+                (car (last (split-string attachment "/" t))))
                download-dir)))
     (mkdir (file-name-directory pdf) t)
     (url-copy-file attachment pdf 1)
