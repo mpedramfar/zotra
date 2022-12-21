@@ -12,6 +12,7 @@ Clone the repository and add the following line to your init file.
 
 ``` emacs-lisp
 (add-to-list 'load-path "/path/to/zotra")
+(require 'zotra)
 ```
 
 Note that this library tries to connect to a backend to do the translation.
@@ -23,6 +24,12 @@ There are 3 options for `zotra-backend`:
 Use the external [zotra-cli](https://github.com/mpedramfar/zotra-cli) library for translation.
 This is the recommended backend to use as **it is the only backend that is able to fetch attachments**.
 See [zotra-cli](https://github.com/mpedramfar/zotra-cli) repository for its installation guide.
+
+Note that if `zotra-cli` is installed locally (i.e. the `zotra` command is not available from your shell), then you can customize `zotra-cli-command` to point at the installed library:
+```elisp
+(setq zotra-cli-command "node /path/to/zotra-cli/bin/index.js")
+```
+
 
 - `translation-server`
 
