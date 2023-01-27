@@ -88,10 +88,12 @@ This is only relevant when `zotra-backend' is TRANSLATION-SERVER or CURL_TRANSLA
 
 
 (defcustom zotra-cli-command
-  "zotra"
-  "The command to run the external zotra-cli program"
+  '("zotra")
+  "The command to run the external zotra-cli program.
+The command should be entered as a list of strings where the
+first element is the command and the rest are its arguments"
   :group 'zotra
-  :type 'string)
+  :type '(repeat string))
 
 
 (defcustom zotra-url-retrieve-timeout
@@ -161,31 +163,38 @@ using `zotra-download-attachment' or `zotra-open-attachment'."
 
 
 
-(defun zotra-run-external-command (cmd-string &optional silent-error)
-  (let* ((stdout-buffer (get-buffer-create
-                         (generate-new-buffer-name "stdout")))
-         (stderr-buffer (get-buffer-create
-                         (generate-new-buffer-name "stderr")))
-         (return-code (shell-command cmd-string stdout-buffer stderr-buffer))
-         (out (with-current-buffer stdout-buffer (buffer-string)))
-         (err (with-current-buffer stderr-buffer (buffer-string))))
-    (kill-buffer stdout-buffer)
-    (kill-buffer stderr-buffer)
-    (if (and (not (= return-code 0))
-             (null silent-error))
-        (user-error
-         (if err
-             err
-           (format "'%s' failed with return code '%s'" cmd-string return-code)))
-      (when err (message "%s" err)))
-    out))
+(defun zotra-run-external-command (cmd &optional silent-error)
+  (with-temp-buffer
+    (let* ((stderr-file (make-temp-file "zotra-stderr-"))
+           (return-code
+            (apply #'call-process
+                   (append
+                    (list (car cmd)
+                          nil
+                          (list (current-buffer) stderr-file)
+                          nil)
+                    (cdr cmd))))
+           (out (buffer-string))
+           (err (with-temp-buffer (insert-file-contents stderr-file) (buffer-string))))
+      (delete-file stderr-file)
+      (if (and (not (= return-code 0))
+               (null silent-error))
+          (user-error
+           (if err
+               err
+             (format "Command '%s' failed with return code '%s'" cmd return-code)))
+        (when err (message "%s" err)))
+      out)))
 
 
 (defun zotra-run-external-curl (data content-type url)
-  (let* ((curl-cmd-string
-          (format "curl --max-time '%s' -s --show-error -d '%s' -H 'Content-Type: %s' '%s'"
-                  zotra-url-retrieve-timeout data content-type url)))
-    (zotra-run-external-command curl-cmd-string)))
+  (zotra-run-external-command
+   (list "curl"
+         "--max-time" (format "%s" zotra-url-retrieve-timeout)
+         "-s" "--show-error"
+         "-d" (format "%s" data)
+         "-H" (format "'Content-Type: %s'" content-type)
+         (format "%s" url))))
 
 
 (defun zotra-contact-server (data content-type endpoint &optional param)
@@ -217,15 +226,15 @@ using `zotra-download-attachment' or `zotra-open-attachment'."
       output))
    ((equal zotra-backend 'zotra-cli)
     (zotra-run-external-command
-     (format "%s %s %s '%s'"
-             zotra-cli-command
-             (if param
-                 (if (equal "single" (car param))
-                     "--single"
-                   (format "--%s=%s" (car param) (cdr param)))
-               (if (equal content-type "application/json")
-                   "--json" ""))
-             endpoint data)
+     (append
+      zotra-cli-command
+      (if param
+          (if (equal "single" (car param))
+              (list "--single")
+            (list (format "--%s=%s" (car param) (cdr param))))
+        (when (equal content-type "application/json")
+          (list "--json")))
+      (list endpoint data))
      t))))
 
 
@@ -352,17 +361,19 @@ If ENTRY-FORMAT is nil, use `zotra-default-entry-format'."
 
 (defun zotra-get-attachments (data &optional endpoint json)
   (let* ((endpoint (or endpoint "web"))
-         (cli-output (zotra-run-external-command
-                      (format "%s -a %s '%s' '%s'"
-                              zotra-cli-command
-                              (if json "-j" "")
-                              endpoint data)
-                      t)))
-     (cl-loop
-      for item in (split-string cli-output "\n")
-      for trimmed-item = (string-trim item)
-      if (not (equal trimmed-item ""))
-      collect trimmed-item)))
+         (cli-output
+          (zotra-run-external-command
+           (append
+            zotra-cli-command
+            (list "-a")
+            (when json "-j")
+            (list endpoint data))
+           t)))
+    (cl-loop
+     for item in (split-string cli-output "\n")
+     for trimmed-item = (string-trim item)
+     if (not (equal trimmed-item ""))
+     collect trimmed-item)))
 
 
 (defun zotra-download-attachment-from-url (&optional url download-dir)

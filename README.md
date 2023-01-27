@@ -4,6 +4,10 @@ This emacs library provides functions to get bibliographic information from a ur
 It also provides a way to obtain a list of attachments (e.g. PDF files) associated with a url.
 This is done using [Zotero translators](https://www.zotero.org/support/translators), but without using the Zotero client.
 
+## Changelog
+
+- [2023-01-27 Fri]: `zotra-cli-command` now takes a list of strings instead of a single string.
+
 ## Instalation
 
 ### Zotra
@@ -27,7 +31,7 @@ See [zotra-cli](https://github.com/mpedramfar/zotra-cli) repository for its inst
 
 Note that if `zotra-cli` is installed locally (i.e. the `zotra` command is not available from your shell), then you can customize `zotra-cli-command` to point at the installed library:
 ```elisp
-(setq zotra-cli-command "node /path/to/zotra-cli/bin/index.js")
+(setq zotra-cli-command '("node" "/path/to/zotra-cli/bin/index.js"))
 ```
 
 
