@@ -376,6 +376,29 @@ If ENTRY-FORMAT is nil, use `zotra-default-entry-format'."
      collect trimmed-item)))
 
 
+(defun zotra-correct-file-extension? (path)
+  "Check if the file extension of PATH matches its mime type."
+  (if (not (and (executable-find "file") (f-exists? "/etc/mime.types")))
+      t  ;; we have no way of checking, so we assume it's correct!
+    (let* ((mime-type
+            (replace-regexp-in-string
+             "\n$" ""
+             (zotra-run-external-command
+              (list "file" "-b" "--mime-type" path))))
+           (correct-extensions
+            (split-string
+             (replace-regexp-in-string
+              mime-type " "
+              (with-temp-buffer
+                (insert-file-contents "/etc/mime.types")
+                (goto-char (point-min))
+                (keep-lines (format "^%s" mime-type))
+                (buffer-string)))
+             nil t)))
+      (when (member (f-ext path) correct-extensions)
+        t))))
+
+
 (defun zotra-download-attachment-from-list (attachments download-dir)
   (let* ((attachment (if attachments
                          (completing-read
@@ -394,7 +417,12 @@ If ENTRY-FORMAT is nil, use `zotra-default-entry-format'."
                download-dir)))
     (mkdir (file-name-directory pdf) t)
     (url-copy-file attachment pdf 1)
-    pdf))
+    (if (zotra-correct-file-extension? pdf)
+        pdf
+      (delete-file pdf)
+      (browse-url attachment)
+      (message "The attachment file seems to be corrupted. Opening the attachment in browser..."))
+    ))
 
 
 (defun zotra-download-attachment-from-url (&optional url download-dir)
