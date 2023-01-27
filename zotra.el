@@ -376,6 +376,27 @@ If ENTRY-FORMAT is nil, use `zotra-default-entry-format'."
      collect trimmed-item)))
 
 
+(defun zotra-download-attachment-from-list (attachments download-dir)
+  (let* ((attachment (if attachments
+                         (completing-read
+                          "Which attachment to open? "
+                          attachments nil t)
+                       (user-error "zotra failed to find any attachments in page")))
+         (download-dir (expand-file-name
+                        (or download-dir
+                            zotra-download-attachment-default-directory
+                            (read-directory-name
+                             "Where to save? "))))
+         (pdf (expand-file-name
+               (completing-read
+                "Rename attachment to: " nil nil nil
+                (car (last (split-string attachment "/" t))))
+               download-dir)))
+    (mkdir (file-name-directory pdf) t)
+    (url-copy-file attachment pdf 1)
+    pdf))
+
+
 (defun zotra-download-attachment-from-url (&optional url download-dir)
   "Download the attachments for the URL to DOWNLOAD-DIR.
 If URL is nil and point is at an org-mode link, use the link.
@@ -389,26 +410,10 @@ If `zotra-download-attachment-default-directory' is also nil, prompt for the dow
                      (if (and link
                               (eq (car link) 'link))
                          (org-element-property :raw-link link)
-                       (ignore-errors (current-kill 0 t)))))))
-         (attachments (zotra-get-attachments url))
-         (attachment (if attachments
-                         (completing-read
-                          "Which attachment to open? "
-                          attachments nil t)
-                       (user-error "zotra failed to find any attachments in page")))
-         (download-dir (expand-file-name
-                        (or download-dir
-                            zotra-download-attachment-default-directory
-                            (read-directory-name
-                             "Where to save? "))))
-         (pdf (expand-file-name
-               (completing-read
-                "Rename attachment to: " nil nil nil
-                (car (last (split-string attachment "/" t))))
-               download-dir)))
-    (mkdir (file-name-directory pdf) t)
-    (url-copy-file attachment pdf 1)
-    pdf))
+                       (ignore-errors (current-kill 0 t))))))))
+    (zotra-download-attachment-from-list
+     (zotra-get-attachments url)
+     download-dir)))
 
 
 (defun zotra-download-attachment-from-search (&optional identifier download-dir)
@@ -416,29 +421,13 @@ If `zotra-download-attachment-default-directory' is also nil, prompt for the dow
 If DOWNLOAD-DIR is nil, use `zotra-download-attachment-default-directory'.
 If `zotra-download-attachment-default-directory' is also nil, prompt for the download directory."
   (interactive)
-  (let* ((identifier
-          (read-string
-           "search identifier (DOI, ISBN, PMID, arXiv ID): "
-           (ignore-errors (current-kill 0 t))))
-         (attachments (zotra-get-attachments identifier "search"))
-         (attachment (if attachments
-                         (completing-read
-                          "Which attachment to open? "
-                          attachments nil t)
-                       (user-error "zotra failed to find any attachments in page")))
-         (download-dir (expand-file-name
-                        (or download-dir
-                            zotra-download-attachment-default-directory
-                            (read-directory-name
-                             "Where to save? "))))
-         (pdf (expand-file-name
-               (completing-read
-                "Rename attachment to: " nil nil nil
-                (car (last (split-string attachment "/" t))))
-               download-dir)))
-    (mkdir (file-name-directory pdf) t)
-    (url-copy-file attachment pdf 1)
-    pdf))
+  (let* ((identifier (or identifier
+                         (read-string
+                          "search identifier (DOI, ISBN, PMID, arXiv ID): "
+                          (ignore-errors (current-kill 0 t))))))
+    (zotra-download-attachment-from-list
+     (zotra-get-attachments identifier "search")
+     download-dir)))
 
 
 (defun zotra-open-attachment-from-url (&optional url download-dir)
