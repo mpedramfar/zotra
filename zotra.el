@@ -187,24 +187,18 @@ using `zotra-download-attachment' or `zotra-open-attachment'."
       out)))
 
 
-(defun zotra-run-external-curl (data content-type url)
-  (zotra-run-external-command
-   (list "curl"
-         "--max-time" (format "%s" zotra-url-retrieve-timeout)
-         "-s" "--show-error"
-         "-d" (format "%s" data)
-         "-H" (format "'Content-Type: %s'" content-type)
-         (format "%s" url))))
-
-
 (defun zotra-contact-server (data content-type endpoint &optional param)
   (cond
    ((equal zotra-backend 'curl_translation-server)
-    (zotra-run-external-curl data
-                             content-type
-                             (concat
-                              zotra-server-path "/" endpoint
-                              (when param (format "?%s=%s" (car param) (cdr param))))))
+    (zotra-run-external-command
+     (list "curl"
+           "--max-time" (format "%s" zotra-url-retrieve-timeout)
+           "-s" "--show-error"
+           "-d" (format "%s" data)
+           "-H" (format "Content-Type: %s" content-type)
+           (concat
+            zotra-server-path "/" endpoint
+            (when param (format "?%s=%s" (car param) (cdr param)))))))
    ((equal zotra-backend 'translation-server)
     (let*
         ((url-request-method "POST")
@@ -463,7 +457,7 @@ If `zotra-download-attachment-default-directory' is also nil, prompt for the dow
 See `zotra-download-attachment-from-url' for more details."
   (interactive)
   (let ((pdf (funcall #'zotra-download-attachment-from-url url download-dir)))
-    (when pdf
+    (when (f-exists? pdf)
       (find-file pdf))))
 
 
@@ -472,7 +466,7 @@ See `zotra-download-attachment-from-url' for more details."
 See `zotra-download-attachment-from-search' for more details."
   (interactive)
   (let ((pdf (funcall #'zotra-download-attachment-from-search identifier download-dir)))
-    (when pdf
+    (when (f-exists? pdf)
       (find-file pdf))))
 
 
