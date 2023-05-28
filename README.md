@@ -101,14 +101,25 @@ These functions allow you to use zotra to add a pdf to your library.
                  "url: "
                  (ignore-errors (current-kill 0 t)))))
          (attachments (zotra-get-attachments url)))
-    (if attachments
-        (completing-read
-         "Which attachment to add? " attachments nil t)
-      (user-error "zotra failed to find any attachments in page"))))
+    (if (cdr attachments)
+        (completing-read "Which attachment to add? " attachments nil t)
+      (car attachments))))
 ```
 
+The variable `bibtex-completion-add-pdf-field-after-add-to-library` determines if the pdf path should be added to a field named `bibtex-completion-pdf-field` in the bibtex entry.
+See [bibtex-completion](https://github.com/tmalsburg/helm-bibtex/) for more details about `bibtex-completion-pdf-field`.
 
 ```emacs-lisp
+(setq bibtex-completion-add-pdf-field-after-add-to-library t)
+
+(defun bibtex-completion-add-pdf-field (key pdf)
+  (save-window-excursion
+    (bibtex-completion-show-entry (list key))
+    (save-restriction
+      (bibtex-narrow-to-entry)
+      (bibtex-make-field (list bibtex-completion-pdf-field nil pdf) t))
+    (save-buffer)))
+
 (defun bibtex-completion-add-pdf-to-library (keys)
   "Add a PDF to the library for the first entry in KEYS.
 The PDF can be added either from an open buffer, a file, a
@@ -141,6 +152,9 @@ URL, or using zotra."
      (file
       (copy-file file pdf 1))
      (url
-      (url-copy-file url pdf 1)))))
+      (url-copy-file url pdf 1)))
+    (when (and bibtex-completion-add-pdf-field-after-add-to-library
+               (f-exists? pdf))
+      (bibtex-completion-add-pdf-field key pdf))))
 ```
 
