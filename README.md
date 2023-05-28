@@ -58,7 +58,7 @@ See `zotra` customization group for a complete list of options and their descrip
 
 ### Using zotra with a browser and org-protocol
 
-	First you need to set up [org-protocol](https://orgmode.org/worg/org-contrib/org-protocol.html). [This section](https://www.orgroam.com/manual.html#Installation-_00281_0029) of the `org-roam` manual describes how to set it up on Linux, macOS, and Windows.
+First you need to set up [org-protocol](https://orgmode.org/worg/org-contrib/org-protocol.html). [This section](https://www.orgroam.com/manual.html#Installation-_00281_0029) of the `org-roam` manual describes how to set it up on Linux, macOS, and Windows.
 
 Then make a bookmark in your browser with the following url:
 ```
