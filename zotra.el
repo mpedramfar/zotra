@@ -293,7 +293,8 @@ if ENTRY_FORMAT is nil."
               "Bibfile: "
               (append (directory-files "." t ".*\\.bib$")
                       (org-cite-list-bibliography-files)))))
-        (entry (zotra-get-entry url-or-search-string is-search entry-format)))
+        (entry (zotra-get-entry url-or-search-string is-search entry-format))
+        last-key)
     (save-window-excursion
       (find-file bibfile)
       (goto-char (point-max))
@@ -305,10 +306,12 @@ if ENTRY_FORMAT is nil."
             (bibtex-narrow-to-entry)
             (bibtex-beginning-of-entry)
             (ignore-errors
-              (run-hooks 'zotra-after-add-entry-hook)))))
+              (run-hooks 'zotra-after-add-entry-hook))
+            (setq last-key (cdr (assoc "=key=" (bibtex-parse-entry)))))))
       (goto-char (point-max))
       (when (not (looking-at "^")) (insert "\n"))
-      (save-buffer))))
+      (save-buffer)
+      last-key)))
 
 
 (defun zotra-add-entry-from-url (url &optional bibfile entry-format)
@@ -355,19 +358,21 @@ If ENTRY-FORMAT is nil, use `zotra-default-entry-format'."
 
 (defun zotra-get-attachments (data &optional endpoint json)
   (let* ((endpoint (or endpoint "web"))
-         (cli-output
-          (zotra-run-external-command
-           (append
-            zotra-cli-command
-            (list "-a")
-            (when json "-j")
-            (list endpoint data))
-           t)))
-    (cl-loop
-     for item in (split-string cli-output "\n")
-     for trimmed-item = (string-trim item)
-     if (not (equal trimmed-item ""))
-     collect trimmed-item)))
+         (cli-output (zotra-run-external-command
+                      (append
+                       zotra-cli-command
+                       (list "-a")
+                       (when json "-j")
+                       (list endpoint data))
+                      t))
+         (attachments (cl-loop
+                       for item in (split-string cli-output "\n")
+                       for trimmed-item = (string-trim item)
+                       if (not (equal trimmed-item ""))
+                       collect trimmed-item)))
+    (if attachments
+        attachments
+      (user-error "zotra failed to find any attachments in page"))))
 
 
 (defun zotra-correct-file-extension? (path)
@@ -393,37 +398,43 @@ If ENTRY-FORMAT is nil, use `zotra-default-entry-format'."
         t))))
 
 
-(defun zotra-download-attachment-from-list (attachments download-dir)
-  (let* ((attachment (if attachments
-                         (completing-read
-                          "Which attachment to open? "
-                          attachments nil t)
-                       (user-error "zotra failed to find any attachments in page")))
+(defun zotra-download-attachment-from-list (attachments download-dir &optional filename)
+  (let* ((attachment (if (cdr attachments)
+                         (completing-read "Which attachment? "
+                                          attachments nil t)
+                       (car attachments)))
          (download-dir (expand-file-name
-                        (or download-dir
+                        (or (when filename (file-name-directory filename))
+                            download-dir
                             zotra-download-attachment-default-directory
-                            (read-directory-name
-                             "Where to save? "))))
-         (pdf (expand-file-name
-               (completing-read
-                "Rename attachment to: " nil nil nil
-                (car (last (split-string attachment "/" t))))
-               download-dir)))
-    (mkdir (file-name-directory pdf) t)
-    (url-copy-file attachment pdf 1)
-    (if (zotra-correct-file-extension? pdf)
-        pdf
-      (delete-file pdf)
+                            (read-directory-name "Where to save? "))))
+         (filename (or (when filename
+                         (expand-file-name filename download-dir))
+                       (expand-file-name
+                        (completing-read
+                         "Rename attachment to: " nil nil nil
+                         (car (last (split-string attachment "/" t))))
+                        download-dir))))
+    (mkdir (file-name-directory filename) t)
+    (url-copy-file attachment filename 1)
+    (unless (file-exists-p filename)
       (browse-url attachment)
-      (message "The attachment file seems to be corrupted. Opening the attachment in browser..."))
+      (user-error "Failed to download file. Openning the attachment in browser..."))
+    (unless (zotra-correct-file-extension? filename)
+      (delete-file filename)
+      (browse-url attachment)
+      (user-error "The attachment file seems to be corrupted. Opening the attachment in browser..."))
+    filename
     ))
 
 
-(defun zotra-download-attachment-from-url (&optional url download-dir)
-  "Download the attachments for the URL to DOWNLOAD-DIR.
+(defun zotra-download-attachment-from-url (&optional url download-dir filename)
+  "Download the attachments for the URL.
 If URL is nil and point is at an org-mode link, use the link.
+If FILENAME does not contain directory, use the directory DOWNLOAD-DIR.
 If DOWNLOAD-DIR is nil, use `zotra-download-attachment-default-directory'.
-If `zotra-download-attachment-default-directory' is also nil, prompt for the download directory."
+If `zotra-download-attachment-default-directory' is also nil, prompt for the download directory.
+If FILENAME is nil, prompt for the file name to save."
   (interactive)
   (let* ((url (or url
                   (read-string
@@ -433,15 +444,21 @@ If `zotra-download-attachment-default-directory' is also nil, prompt for the dow
                               (eq (car link) 'link))
                          (org-element-property :raw-link link)
                        (ignore-errors (current-kill 0 t))))))))
+    (mapc (lambda (x)
+            (setq url (funcall x url)))
+          zotra-url-cleanup-functions)
     (zotra-download-attachment-from-list
      (zotra-get-attachments url)
-     download-dir)))
+     download-dir filename)))
 
 
-(defun zotra-download-attachment-from-search (&optional identifier download-dir)
-  "Download the attachments for the IDENTIFIER to DOWNLOAD-DIR.
+(defun zotra-download-attachment-from-search (&optional identifier download-dir filename)
+  "Download the attachments for the IDENTIFIER.
+If URL is nil and point is at an org-mode link, use the link.
+If FILENAME does not contain directory, use the directory DOWNLOAD-DIR.
 If DOWNLOAD-DIR is nil, use `zotra-download-attachment-default-directory'.
-If `zotra-download-attachment-default-directory' is also nil, prompt for the download directory."
+If `zotra-download-attachment-default-directory' is also nil, prompt for the download directory.
+If FILENAME is nil, prompt for the file name to save."
   (interactive)
   (let* ((identifier (or identifier
                          (read-string
@@ -449,25 +466,25 @@ If `zotra-download-attachment-default-directory' is also nil, prompt for the dow
                           (ignore-errors (current-kill 0 t))))))
     (zotra-download-attachment-from-list
      (zotra-get-attachments identifier "search")
-     download-dir)))
+     download-dir filename)))
 
 
 (defun zotra-open-attachment-from-url (&optional url download-dir)
   "Use `zotra-download-attachment-from-url' to download attachments and open them using `find-file'.
 See `zotra-download-attachment-from-url' for more details."
   (interactive)
-  (let ((pdf (funcall #'zotra-download-attachment-from-url url download-dir)))
-    (when (f-exists? pdf)
-      (find-file pdf))))
+  (let ((filename (funcall #'zotra-download-attachment-from-url url download-dir)))
+    (when (f-exists? filename)
+      (find-file filename))))
 
 
 (defun zotra-open-attachment-from-search (&optional identifier download-dir)
   "Use `zotra-download-attachment-from-search' to download attachments and open them using `find-file'.
 See `zotra-download-attachment-from-search' for more details."
   (interactive)
-  (let ((pdf (funcall #'zotra-download-attachment-from-search identifier download-dir)))
-    (when (f-exists? pdf)
-      (find-file pdf))))
+  (let ((filename (funcall #'zotra-download-attachment-from-search identifier download-dir)))
+    (when (f-exists? filename)
+      (find-file filename))))
 
 
 ;; zotra-protocol
