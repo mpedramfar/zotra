@@ -240,31 +240,34 @@ using `zotra-download-attachment' or `zotra-open-attachment'."
              (if is-search "search" "web")
              (when (and (eq zotra-multiple-item-strategy 'single)
                         (not is-search))
-               '("single" . "1"))))
-         (p (json-parse-string j :object-type 'alist :array-type 'list))
-         (p-items (assoc 'items p)))
-    (cond
-     ((null p-items)
-      j)
-     ((and (not (eq zotra-multiple-item-strategy 'multiple))
-           (yes-or-no-p "Capture the page as a single item? "))
-      (zotra-contact-server
-       url-or-search-string
-       "text/plain" "web" '("single" . "1")))
-     (t
-      (let* ((candidates
-              (cl-loop
-               for item in (cdr p-items)
-               collect
-               (replace-regexp-in-string
-                "," ";" (format "%s --- %s" (car item) (cdr item)))))
-             (choices
-              (cl-loop
-               for c in (completing-read-multiple "Select: " candidates nil t)
-               collect
-               (nth (cl-position c candidates :test 'equal) (cdr p-items)))))
-        (setcdr p-items choices)
-        (zotra-contact-server (json-serialize p) "application/json" "web"))))))
+               '("single" . "1")))))
+    (condition-case nil
+        (let* ((p (json-parse-string j :object-type 'alist :array-type 'list))
+               (p-items (assoc 'items p)))
+          (cond
+           ((null p-items)
+            j)
+           ((and (not (eq zotra-multiple-item-strategy 'multiple))
+                 (yes-or-no-p "Capture the page as a single item? "))
+            (zotra-contact-server
+             url-or-search-string
+             "text/plain" "web" '("single" . "1")))
+           (t
+            (let* ((candidates
+                    (cl-loop
+                     for item in (cdr p-items)
+                     collect
+                     (replace-regexp-in-string
+                      "," ";" (format "%s --- %s" (car item) (cdr item)))))
+                   (choices
+                    (cl-loop
+                     for c in (completing-read-multiple "Select: " candidates nil t)
+                     collect
+                     (nth (cl-position c candidates :test 'equal) (cdr p-items)))))
+              (setcdr p-items choices)
+              (zotra-contact-server (json-serialize p) "application/json" "web")))))
+      (json-parse-error
+       (error "JSON parse error: %s" j)))))
 
 
 (defun zotra-get-entry-from-json (json &optional entry-format)
