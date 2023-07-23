@@ -34,7 +34,6 @@
 (require 'url)
 (require 'org-protocol)
 (require 'bibtex)
-(require 'f)
 
 
 (defgroup zotra nil
@@ -461,7 +460,7 @@ If ALL is non-nil, return the list of attachments."
 
 (defun zotra-correct-file-extension? (path)
   "Check if the file extension of PATH matches its mime type."
-  (if (not (and (executable-find "file") (f-exists? "/etc/mime.types")))
+  (if (not (and (executable-find "file") (file-exists-p "/etc/mime.types")))
       t  ;; we have no way of checking, so we assume it's correct!
     (let* ((mime-type
             (replace-regexp-in-string
@@ -478,7 +477,7 @@ If ALL is non-nil, return the list of attachments."
                 (keep-lines (format "^%s" mime-type))
                 (buffer-string)))
              nil t)))
-      (when (member (f-ext path) correct-extensions)
+      (when (member (file-name-extension path) correct-extensions)
         t))))
 
 
