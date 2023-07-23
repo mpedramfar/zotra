@@ -6,6 +6,7 @@ This is done using [Zotero translators](https://www.zotero.org/support/translato
 
 ## Changelog
 
+- [2023-07-16 Sun]: Some internal functions have changed. `zotra-url-cleanup-functions` is renamed to `zotra-url-redirect-functions`.
 - [2023-01-27 Fri]: `zotra-cli-command` now takes a list of strings instead of a single string.
 
 ## Instalation
@@ -52,8 +53,6 @@ Alternatively, you can run `zotra-add-entry-from-search`, then enter the search 
 
 To download attachments from a url or search identifier, run `zotra-download-attachment-from-url`/`zotra-download-attachment-from-search`.
 
-To download and open attachments from a url or search identifier, run `zotra-open-attachment-from-url`/`zotra-open-attachment-from-search`.
-
 See `zotra` customization group for a complete list of options and their description.
 
 ### Using zotra with a browser and org-protocol
@@ -86,26 +85,6 @@ For example, if you are using org-ref, you could add this line to your init file
 If you are using bibtex-completion, you can add the following functions to your init file.
 These functions allow you to use zotra to add a pdf to your library.
 
-```emacs-lisp
-(defun zotra-bibtex-completion-get-pdf-url-from-keys (keys)
-  "Get the url attachment from the url field of bibtex entry or prompt user."
-  (let* ((key (car keys))
-         (entry (bibtex-completion-get-entry key))
-         (url-field (or (bibtex-completion-get-value "url" entry) ""))
-         (url-field (string-trim url-field))
-         (url (if (and (< 0 (length url-field))
-                       (y-or-n-p
-                        (format "Use '%s'? " url-field)))
-                  url-field
-                (read-string
-                 "url: "
-                 (ignore-errors (current-kill 0 t)))))
-         (attachments (zotra-get-attachments url)))
-    (if (cdr attachments)
-        (completing-read "Which attachment to add? " attachments nil t)
-      (car attachments))))
-```
-
 The variable `bibtex-completion-add-pdf-field-after-add-to-library` determines if the pdf path should be added to a field named `bibtex-completion-pdf-field` in the bibtex entry.
 See [bibtex-completion](https://github.com/tmalsburg/helm-bibtex/) for more details about `bibtex-completion-pdf-field`.
 
@@ -119,23 +98,39 @@ See [bibtex-completion](https://github.com/tmalsburg/helm-bibtex/) for more deta
       (bibtex-narrow-to-entry)
       (bibtex-make-field (list bibtex-completion-pdf-field nil pdf) t))
     (save-buffer)))
+```
 
+Next we override the function `bibtex-completion-add-pdf-to-library` so that it provides the option to use Zotra.
+
+```emacs-lisp
 (defun bibtex-completion-add-pdf-to-library (keys)
   "Add a PDF to the library for the first entry in KEYS.
 The PDF can be added either from an open buffer, a file, a
-URL, or using zotra."
+URL, or using Zotra."
   (let* ((key (car keys))
          (source (char-to-string
-                  (read-char-choice "Add pdf from [b]uffer, [f]ile, [u]rl, or [z]otra? " '(?b ?f ?u ?z))))
+                  (if (fboundp 'zotra-get-attachment)
+                      (read-char-choice "Add pdf from [b]uffer, [f]ile, [u]rl, or [z]otra? " '(?b ?f ?u ?z))
+                    (read-char-choice "Add pdf from [b]uffer, [f]ile, or [u]rl? " '(?b ?f ?u)))))
          (buffer (when (string= source "b")
                    (read-buffer-to-switch "Add pdf buffer: ")))
          (file (when (string= source "f")
                  (expand-file-name (read-file-name "Add pdf file: " nil nil t))))
-         (url (when (string= source "u")
-                (read-string "Add pdf URL: ")))
-         (url (if (string= source "z")
-                  (zotra-bibtex-completion-get-pdf-url-from-keys keys)
-                url))
+         (url (cond
+               ((string= source "u")
+                (read-string "Add pdf URL: "))
+               ((string= source "z")
+                (let* ((entry (bibtex-completion-get-entry key))
+                       (url-field (string-trim
+                                   (or (bibtex-completion-get-value "url" entry) ""))))
+                  (zotra-get-attachment
+                   (if (and (< 0 (length url-field))
+                            (y-or-n-p
+                             (format "Use '%s' with Zotra? " url-field)))
+                       url-field
+                     (read-string
+                      "url to use with Zotra: "
+                      (ignore-errors (current-kill 0 t)))))))))
          (path (-flatten (list bibtex-completion-library-path)))
          (path (if (cdr path)
                    (completing-read "Add pdf to: " path nil t)
@@ -154,7 +149,7 @@ URL, or using zotra."
      (url
       (url-copy-file url pdf 1)))
     (when (and bibtex-completion-add-pdf-field-after-add-to-library
+               (or buffer file url)
                (f-exists? pdf))
       (bibtex-completion-add-pdf-field key pdf))))
 ```
-
