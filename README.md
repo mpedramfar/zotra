@@ -6,7 +6,7 @@ This is done using [Zotero translators](https://www.zotero.org/support/translato
 
 ## Changelog
 
-- [2023-07-16 Sun]: Some internal functions have changed. `zotra-url-cleanup-functions` is renamed to `zotra-url-redirect-functions`.
+- [2023-07-23 Sun]: Some internal functions have changed. `zotra-url-cleanup-functions` is renamed to `zotra-url-redirect-functions`.
 - [2023-01-27 Fri]: `zotra-cli-command` now takes a list of strings instead of a single string.
 
 ## Instalation

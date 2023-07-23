@@ -32,7 +32,7 @@
 
 ;;; Code:
 (require 'url)
-(require 'org)
+(require 'org-element)
 (require 'org-protocol)
 (require 'bibtex)
 
