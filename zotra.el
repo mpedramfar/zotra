@@ -165,7 +165,7 @@ ASK: ask user if the url should be captured as a single entry or not."
 
 
 (defcustom zotra-download-attachment-default-directory
-  "/tmp/zotra-attachment-dir"
+  (expand-file-name "zotra-attachment-dir" temporary-file-directory)
   "The default download directory for attachments.
 Used in `zotra-download-attachment'."
   :group 'zotra
@@ -549,7 +549,7 @@ Return the path to the downloaded attachment."
         (bibfile (plist-get info :bibfile))
         (entry-format (plist-get info :format))
         (zotra-multiple-item-strategy zotra-protocol-multiple-item-strategy))
-    (message (format "Zotra received: `%s' to be saved in `%s'" url bibfile))
+    (message "Zotra received: `%s' to be saved in `%s'" url bibfile)
     (zotra-add-entry-from-url url entry-format bibfile)
     nil))
 
@@ -572,7 +572,7 @@ Return the path to the downloaded attachment."
     url))
 
 
-;;* The end
+;; The end
 (provide 'zotra)
 
 ;;; zotra.el ends here
