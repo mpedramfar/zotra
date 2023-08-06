@@ -363,7 +363,7 @@ its output."
          (or bibfile zotra-default-bibliography
              (completing-read
               "Bibfile: "
-              (append (directory-files "." t ".*\\.bib$")
+              (append (directory-files "." t ".*\\.bib\\'")
                       (and (fboundp #'org-cite-list-bibliography-files)
                            (org-cite-list-bibliography-files))))))
         (entry (zotra-get-entry url-or-search-string is-search entry-format))
@@ -499,7 +499,7 @@ If ALL is non-nil, return the list of attachments."
     (url-copy-file attachment-url filename 1)
     (unless (file-exists-p filename)
       (browse-url attachment-url)
-      (user-error "Failed to download file. Openning the attachment in browser"))
+      (user-error "Failed to download file. Opening the attachment in browser"))
     (unless (zotra-correct-file-extension? filename)
       (delete-file filename)
       (browse-url attachment-url)
