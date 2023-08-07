@@ -343,18 +343,28 @@ its output."
   (let* ((query-result (zotra-query-url-or-search-string
                         url-or-search-string is-search))
          (data (car query-result))
-         (endpoint (cdr query-result)))
+         (endpoint (cdr query-result))
+         (entry-format (or entry-format
+                           zotra-default-entry-format))
+         (entry-bibtex-dialect
+          (cond
+           ((equal entry-format "bibtex") 'BibTeX)
+           ((equal entry-format "biblatex") 'biblatex)
+           (t nil))))
   (with-temp-buffer
     (insert (zotra-get-entry-from-json
              (zotra-get-json data endpoint) entry-format))
     (goto-char (point-min))
-    (while (bibtex-next-entry)
-      (save-excursion
-        (save-restriction
-          (bibtex-narrow-to-entry)
-          (bibtex-beginning-of-entry)
-          (ignore-errors
-            (run-hooks 'zotra-after-add-entry-hook)))))
+    (when entry-bibtex-dialect
+      (bibtex-mode)
+      (bibtex-set-dialect entry-bibtex-dialect t)
+      (while (bibtex-next-entry)
+        (save-excursion
+          (save-restriction
+            (bibtex-narrow-to-entry)
+            (bibtex-beginning-of-entry)
+            (ignore-errors
+              (run-hooks 'zotra-after-add-entry-hook))))))
     (buffer-string))))
 
 
