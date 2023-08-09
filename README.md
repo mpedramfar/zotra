@@ -1,5 +1,7 @@
 # Zotra
 
+[https://melpa.org/#/zotra](http://melpa.org/packages/zotra-badge.svg)
+
 This emacs library provides functions to get bibliographic information from a url and save it into a bibtex file.
 It also provides a way to obtain a list of attachments (e.g. PDF files) associated with a url.
 This is done using [Zotero translators](https://www.zotero.org/support/translators), but without using the Zotero client.
@@ -13,12 +15,16 @@ This is done using [Zotero translators](https://www.zotero.org/support/translato
 
 ### Zotra
 
-Clone the repository and add the following line to your init file.
+The prefered instllation method is from MELPA.
+
+Alternatively, you can clone the repository and add the following line to your init file.
 
 ``` emacs-lisp
 (add-to-list 'load-path "/path/to/zotra")
 (require 'zotra)
 ```
+
+### Backend
 
 Note that this library tries to connect to a backend to do the translation.
 The choice of backend can be customized through `zotra-backend` variable.
@@ -46,6 +52,7 @@ See [zotero translation server](https://github.com/zotero/translation-server/) r
 Use the external curl program to connect to a running instance of zotero translation server.
 Sometimes the previous backend fails. In this case you can try this backend.
 To use this backend you need to install the zotero translation server and the curl program.
+
 ## Usage and configuration
 
 From inside emacs, run `zotra-add-entry-from-url`, then enter the url and choose the bibtex file to save into.

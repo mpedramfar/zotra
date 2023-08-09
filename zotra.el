@@ -68,8 +68,9 @@ is not applicable, it should return its input without change."
 (defcustom zotra-after-add-entry-hook
   '(bibtex-clean-entry)
   "These functions are called after adding an entry.
-They take no arguments, and they can be used to
- cleanup and format new entries."
+They take no arguments, and they can be used to cleanup and format new entries.
+
+These hooks are run only if ENTRY-FORMAT is \"bibtex\" or \"biblatex\"."
   :group 'zotra
   :type 'hook)
 
