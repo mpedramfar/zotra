@@ -1,6 +1,6 @@
 # Zotra
 
-![https://melpa.org/#/zotra](http://melpa.org/packages/zotra-badge.svg)
+[![MELPA](https://melpa.org/packages/zotra-badge.svg)](https://melpa.org/#/zotra)
 
 This emacs library provides functions to get bibliographic information from a url and save it into a bibtex file.
 It also provides a way to obtain a list of attachments (e.g. PDF files) associated with a url.
