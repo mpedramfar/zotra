@@ -493,18 +493,19 @@ If ALL is non-nil, return the list of attachments."
         t))))
 
 
-(defun zotra-download-attachment (attachment-url download-dir &optional filename)
+(defun zotra-download-attachment (attachment-url download-dir &optional filename confirm-filename)
   (let* ((download-dir (expand-file-name
                         (or (when filename (file-name-directory filename))
                             download-dir
                             zotra-download-attachment-default-directory
                             (read-directory-name "Where to save? "))))
-         (filename (or (when filename
+         (filename (or (when (and filename (not confirm-filename))
                          (expand-file-name filename download-dir))
                        (expand-file-name
                         (completing-read
                          "Rename attachment to: " nil nil nil
-                         (car (last (split-string attachment-url "/" t))))
+                         (or filename
+                             (car (last (split-string attachment-url "/" t)))))
                         download-dir))))
     (mkdir (file-name-directory filename) t)
     (url-copy-file attachment-url filename 1)
@@ -518,7 +519,7 @@ If ALL is non-nil, return the list of attachments."
     filename))
 
 
-(defun zotra-download-attachment-from-url (&optional url download-dir filename)
+(defun zotra-download-attachment-from-url (&optional url download-dir filename confirm-filename)
   "Download the attachments for the URL.
 
 If URL is nil, ask the user.
@@ -526,16 +527,17 @@ If FILENAME does not contain directory, use the directory DOWNLOAD-DIR.
 If DOWNLOAD-DIR is nil, use `zotra-download-attachment-default-directory'.
 If `zotra-download-attachment-default-directory' is also nil, ask for
 the download directory.
-If FILENAME is nil, ask for the file name to save.
+If FILENAME is nil or CONFIRM-FILENAME is non-nil, ask for the filename
+to save.
 
 Return the path to the downloaded attachment."
   (interactive)
   (zotra-download-attachment
    (zotra-get-attachment url)
-   download-dir filename))
+   download-dir filename confirm-filename))
 
 
-(defun zotra-download-attachment-from-search (&optional identifier download-dir filename)
+(defun zotra-download-attachment-from-search (&optional identifier download-dir filename confirm-filename)
   "Download the attachments for the IDENTIFIER.
 
 If IDENTIFIER is nil, ask the user.
@@ -543,13 +545,14 @@ If FILENAME does not contain directory, use the directory DOWNLOAD-DIR.
 If DOWNLOAD-DIR is nil, use `zotra-download-attachment-default-directory'.
 If `zotra-download-attachment-default-directory' is also nil, ask for
 the download directory.
-If FILENAME is nil, ask for the file name to save.
+If FILENAME is nil or CONFIRM-FILENAME is non-nil, ask for the filename
+to save.
 
 Return the path to the downloaded attachment."
   (interactive)
   (zotra-download-attachment
    (zotra-get-attachment identifier t)
-   download-dir filename))
+   download-dir filename confirm-filename))
 
 
 ;; zotra-protocol

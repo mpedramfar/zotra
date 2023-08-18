@@ -62,6 +62,39 @@ To download attachments from a url or search identifier, run `zotra-download-att
 
 See `zotra` customization group for a complete list of options and their description.
 
+### Automatically download attachment after adding a bibtex entry
+
+When the point is at a bibtex entry, the following function downloads the attachment for it and adds the filename to a bibtex field named "File".
+```emacs-lisp
+(defun zotra-download-attachment-for-current-entry ()
+  (interactive)
+  (save-excursion
+    (bibtex-beginning-of-entry)
+    (let* ((entry (bibtex-parse-entry t))
+           (key (cdr (assoc "=key=" entry)))
+           (url (cdr (assoc "url" entry)))
+           (filename (concat key ".pdf"))
+           (filename (when entry
+                       (zotra-download-attachment-from-url
+                        url nil filename))))
+      (when filename
+        (bibtex-make-field (list "File" nil filename) t)))))
+```
+
+This function can be added to `zotra-after-add-entry-hook`. 
+*Note that this function chooses the bibtex key as the filename so it should be be after any hook that might change the bibtex key.*
+When it is added to this hook, any time a bibtex entry is added, its attachments will also be downloaded.
+Alternatively, you can add the following function to your init file to add an entry from url and download its attachments.
+
+```emacs-lisp
+(defun zotra-add-entry-from-url-and-download-attachment (&optional url)
+  (interactive)
+  (let ((zotra-after-add-entry-hook
+         (append zotra-after-add-entry-hook
+                 '(zotra-download-attachment-for-current-entry))))
+    (zotra-add-entry-from-url url)))
+```
+
 ### Using zotra with a browser and org-protocol
 
 First you need to set up [org-protocol](https://orgmode.org/worg/org-contrib/org-protocol.html). [This section](https://www.orgroam.com/manual.html#Installation-_00281_0029) of the `org-roam` manual describes how to set it up on Linux, macOS, and Windows.
