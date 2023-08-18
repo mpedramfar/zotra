@@ -78,8 +78,7 @@ When the point is at a bibtex entry, the following function downloads the attach
                        (zotra-download-attachment-from-url
                         url nil filename))))
       (when filename
-        (bibtex-make-field (list "File" nil filename) t)
-        (save-buffer)))))
+        (bibtex-make-field (list "File" nil filename) t)))))
 ```
 
 This function can be added to `zotra-after-add-entry-hook`. 
