@@ -65,9 +65,13 @@ is not applicable, it should return its input without change."
   :type 'hook)
 
 
-(defcustom zotra-after-add-entry-hook
+(define-obsolete-variable-alias
+  'zotra-after-add-entry-hook 'zotra-after-get-bibtex-entry-hook
+  "[2023-08-18 Fri]")
+
+(defcustom zotra-after-get-bibtex-entry-hook
   '(bibtex-clean-entry)
-  "These functions are called after adding an entry.
+  "These functions are called after `zotra-get-entry'.
 They take no arguments, and they can be used to cleanup and format new entries.
 
 These hooks are run only if ENTRY-FORMAT is \"bibtex\" or \"biblatex\"."
@@ -287,7 +291,7 @@ be treated as \"web\"."
   "Convert Zotero JSON format to ENTRY-FORMAT.
 If ENTRY_FORMAT is nil, convert to `zotra-default-entry-format'.
 
-This function does NOT run the hooks in `zotra-after-add-entry-hook'."
+This function does NOT run the hooks in `zotra-after-get-bibtex-entry-hook'."
   (let* ((entry-format (or entry-format
                            zotra-default-entry-format))
          (entry (zotra-contact-server
@@ -339,8 +343,8 @@ Otherwise, treat it as a search identifier.
 Return the entry in the format ENTRY-FORMAT or `zotra-default-entry-format'
 if ENTRY_FORMAT is nil.
 
-This function runs the hooks in `zotra-after-add-entry-hook' before returning
-its output."
+When ENTRY-FORMAT is \"bibtex\" or \"biblatex\", this function runs the hooks
+in `zotra-after-get-bibtex-entry-hook' before returning its output."
   (let* ((query-result (zotra-query-url-or-search-string
                         url-or-search-string is-search))
          (data (car query-result))
@@ -365,7 +369,7 @@ its output."
             (bibtex-narrow-to-entry)
             (bibtex-beginning-of-entry)
             (ignore-errors
-              (run-hooks 'zotra-after-add-entry-hook))))))
+              (run-hooks 'zotra-after-get-bibtex-entry-hook))))))
     (buffer-string))))
 
 

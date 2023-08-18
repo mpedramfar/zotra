@@ -8,6 +8,7 @@ This is done using [Zotero translators](https://www.zotero.org/support/translato
 
 ## Changelog
 
+- [2023-08-18 Fri]: The variable `zotra-after-add-entry-hook` is now obsolete; use `zotra-after-get-bibtex-entry-hook` instead.
 - [2023-07-23 Sun]: Some internal functions have changed. `zotra-url-cleanup-functions` is renamed to `zotra-url-redirect-functions`.
 - [2023-01-27 Fri]: `zotra-cli-command` now takes a list of strings instead of a single string.
 
@@ -81,7 +82,7 @@ When the point is at a bibtex entry, the following function downloads the attach
         (bibtex-make-field (list "File" nil filename) t)))))
 ```
 
-This function can be added to `zotra-after-add-entry-hook`. 
+This function can be added to `zotra-after-get-bibtex-entry-hook`. 
 *Note that this function chooses the bibtex key as the filename so it should be be after any hook that might change the bibtex key.*
 When it is added to this hook, any time a bibtex entry is added, its attachments will also be downloaded.
 Alternatively, you can add the following function to your init file to add an entry from url and download its attachments.
@@ -89,8 +90,8 @@ Alternatively, you can add the following function to your init file to add an en
 ```emacs-lisp
 (defun zotra-add-entry-from-url-and-download-attachment (&optional url)
   (interactive)
-  (let ((zotra-after-add-entry-hook
-         (append zotra-after-add-entry-hook
+  (let ((zotra-after-get-bibtex-entry-hook
+         (append zotra-after-get-bibtex-entry-hook
                  '(zotra-download-attachment-for-current-entry))))
     (zotra-add-entry-from-url url)))
 ```
@@ -113,11 +114,11 @@ Now you can click on the bookmark in any page and the bibliographic information 
 
 ### Using zotra with [org-ref](https://github.com/jkitchin/org-ref)
 
-The functions in `zotra-after-add-entry-hook` are called after adding an entry.
+The functions in `zotra-after-get-bibtex-entry-hook` are called before a bibtex/biblatex entry is added.
 They take no arguments, and they can be used to cleanup and format new entries.
 For example, if you are using org-ref, you could add this line to your init file:
 ```emacs-lisp
-(add-hook 'zotra-after-add-entry-hook 'org-ref-clean-bibtex-entry)
+(add-hook 'zotra-after-get-bibtex-entry-hook 'org-ref-clean-bibtex-entry)
 ```
 
 ### Using zotra with [bibtex-completion](https://github.com/tmalsburg/helm-bibtex/)
