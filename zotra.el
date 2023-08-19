@@ -354,11 +354,10 @@ in `zotra-after-get-bibtex-entry-hook' before returning its output."
          (entry-bibtex-dialect
           (cond
            ((equal entry-format "bibtex") 'BibTeX)
-           ((equal entry-format "biblatex") 'biblatex)
-           (t nil))))
+           ((equal entry-format "biblatex") 'biblatex))))
   (with-temp-buffer
-    (insert (zotra-get-entry-from-json
-             (zotra-get-json data endpoint) entry-format))
+    (insert "\n" (zotra-get-entry-from-json
+                  (zotra-get-json data endpoint) entry-format))
     (goto-char (point-min))
     (when entry-bibtex-dialect
       (bibtex-mode)
@@ -367,9 +366,9 @@ in `zotra-after-get-bibtex-entry-hook' before returning its output."
         (save-excursion
           (save-restriction
             (bibtex-narrow-to-entry)
-            (bibtex-beginning-of-entry)
-            (ignore-errors
-              (run-hooks 'zotra-after-get-bibtex-entry-hook))))))
+            (dolist (h zotra-after-get-bibtex-entry-hook)
+              (bibtex-beginning-of-entry)
+              (ignore-errors (funcall h)))))))
     (buffer-string))))
 
 
