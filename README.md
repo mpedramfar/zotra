@@ -123,7 +123,18 @@ For example, if you are using org-ref, you could add this line to your init file
 
 ### Using zotra with [bibtex-completion](https://github.com/tmalsburg/helm-bibtex/)
 
-If you are using bibtex-completion, you can add the following functions to your init file.
+If you are using bibtex-completion, you can add zotra as a fallback option in when the search fails:
+```emacs-lisp
+(add-to-list 'bibtex-completion-fallback-options
+             '("Add entry from DOI, ISBN, PMID or arXiv ID (zotra.el)"
+               . zotra-add-entry-from-search))
+
+(add-to-list 'bibtex-completion-fallback-options
+             '("Add entry from web url                     (zotra.el)"
+               . zotra-add-entry-from-url))
+```
+
+You can also add the following functions to your init file.
 These functions allow you to use zotra to add a pdf to your library.
 
 The variable `bibtex-completion-add-pdf-field-after-add-to-library` determines if the pdf path should be added to a field named `bibtex-completion-pdf-field` in the bibtex entry.
