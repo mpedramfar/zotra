@@ -8,6 +8,7 @@ This is done using [Zotero translators](https://www.zotero.org/support/translato
 
 ## Changelog
 
+- [2023-09-21 Thu]: Better integration with bibtex-completion. Also the variables `zotra-download-attachment-default-directory` and `zotra-default-bibliography` can now be lists.
 - [2023-08-18 Fri]: The variable `zotra-after-add-entry-hook` is now obsolete; use `zotra-after-get-bibtex-entry-hook` instead.
 - [2023-07-23 Sun]: Some internal functions have changed. `zotra-url-cleanup-functions` is renamed to `zotra-url-redirect-functions`.
 - [2023-01-27 Fri]: `zotra-cli-command` now takes a list of strings instead of a single string.

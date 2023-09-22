@@ -611,9 +611,7 @@ The PDF can be added either from an open buffer, a file, a
 URL, or using Zotra."
   (let* ((key (car keys))
          (source (char-to-string
-                  (if (fboundp 'zotra-get-attachment)
-                      (read-char-choice "Add pdf from [b]uffer, [f]ile, [u]rl, or [z]otra? " '(?b ?f ?u ?z))
-                    (read-char-choice "Add pdf from [b]uffer, [f]ile, or [u]rl? " '(?b ?f ?u)))))
+                  (read-char-choice "Add pdf from [b]uffer, [f]ile, [u]rl, or [z]otra? " '(?b ?f ?u ?z))))
          (buffer (when (string= source "b")
                    (read-buffer-to-switch "Add pdf buffer: ")))
          (file (when (string= source "f")
