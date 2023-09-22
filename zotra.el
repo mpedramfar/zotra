@@ -44,13 +44,14 @@
 
 (defcustom zotra-default-bibliography
   nil
-  "Default bibliography file.
+  "Default bibliography file or list of files.
 
-If this variable is non-nil, interactive calls to `zotra-add-entry-from-url'
-and `zotra-add-entry-from-search' will not ask the user for the bibfile.
+If this variable contains a single file, interactive calls to
+`zotra-add-entry-from-url' and `zotra-add-entry-from-search'
+will not ask the user for the bibfile.
 Otherwise, zotra will ask the user to choose one."
   :group 'zotra
-  :type 'file)
+  :type '(choice file (repeat file)))
 
 
 (defcustom zotra-url-redirect-functions
@@ -171,10 +172,10 @@ ASK: ask user if the url should be captured as a single entry or not."
 
 (defcustom zotra-download-attachment-default-directory
   (expand-file-name "zotra-attachment-dir" temporary-file-directory)
-  "The default download directory for attachments.
+  "The default download directory (or directories) for attachments.
 Used in `zotra-download-attachment'."
   :group 'zotra
-  :type 'string)
+  :type '(choice directory (repeat directory)))
 
 
 
@@ -374,10 +375,15 @@ in `zotra-after-get-bibtex-entry-hook' before returning its output."
 
 (defun zotra-add-entry (&optional url-or-search-string is-search entry-format bibfile)
   (let ((bibfile
-         (or bibfile zotra-default-bibliography
+         (or bibfile
+             (and (stringp zotra-default-bibliography) zotra-default-bibliography)
+             (and (listp zotra-default-bibliography)
+                  (not (cdr zotra-default-bibliography))
+                  (car zotra-default-bibliography))
              (completing-read
               "Bibfile: "
-              (append (directory-files "." t ".*\\.bib\\'")
+              (append zotra-default-bibliography
+                      (directory-files "." t ".*\\.bib\\'")
                       (and (fboundp #'org-cite-list-bibliography-files)
                            (org-cite-list-bibliography-files))))))
         (entry (zotra-get-entry url-or-search-string is-search entry-format))
@@ -500,8 +506,16 @@ If ALL is non-nil, return the list of attachments."
   (let* ((download-dir (expand-file-name
                         (or (when filename (file-name-directory filename))
                             download-dir
-                            zotra-download-attachment-default-directory
-                            (read-directory-name "Where to save? "))))
+                            (and (stringp zotra-download-attachment-default-directory)
+                                 zotra-download-attachment-default-directory)
+                            (and (listp zotra-download-attachment-default-directory)
+                                 (not (cdr zotra-download-attachment-default-directory))
+                                 (car zotra-download-attachment-default-directory))
+                            (and zotra-download-attachment-default-directory
+                                 (completing-read "Where to save? "
+                                                  zotra-download-attachment-default-directory))
+                            (and (not zotra-download-attachment-default-directory)
+                                 (read-directory-name "Where to save? ")))))
          (filename (or (when (and filename (not confirm-filename))
                          (expand-file-name filename download-dir))
                        (expand-file-name
@@ -587,6 +601,65 @@ Return the path to the downloaded attachment."
        "https://arxiv.org/abs/"
        (match-string-no-properties 3 url))
     url))
+
+
+;;; zotra + bibtex-completion
+
+(defun zotra--bibtex-completion-add-pdf-to-library (keys)
+  "Add a PDF to the library for the first entry in KEYS.
+The PDF can be added either from an open buffer, a file, a
+URL, or using Zotra."
+  (let* ((key (car keys))
+         (source (char-to-string
+                  (if (fboundp 'zotra-get-attachment)
+                      (read-char-choice "Add pdf from [b]uffer, [f]ile, [u]rl, or [z]otra? " '(?b ?f ?u ?z))
+                    (read-char-choice "Add pdf from [b]uffer, [f]ile, or [u]rl? " '(?b ?f ?u)))))
+         (buffer (when (string= source "b")
+                   (read-buffer-to-switch "Add pdf buffer: ")))
+         (file (when (string= source "f")
+                 (expand-file-name (read-file-name "Add pdf file: " nil nil t))))
+         (url (cond
+               ((string= source "u")
+                (read-string "Add pdf URL: "))
+               ((string= source "z")
+                (let* ((entry (bibtex-completion-get-entry key))
+                       (url-field (string-trim
+                                   (or (bibtex-completion-get-value "url" entry) ""))))
+                  (zotra-get-attachment
+                   (if (< 0 (length url-field))
+                       url-field
+                     (read-string "URL to use with Zotra: ")))))))
+         (path (-flatten (list bibtex-completion-library-path)))
+         (path (if (cdr path)
+                   (completing-read "Add pdf to: " path nil t)
+                 (car path)))
+         (pdf (expand-file-name (completing-read "Rename pdf to: "
+                                                 (--map (s-concat key it)
+                                                        (-flatten bibtex-completion-pdf-extension))
+                                                 nil nil key)
+                                path)))
+    (cond
+     (buffer
+      (with-current-buffer buffer
+        (write-file pdf t)))
+     (file
+      (copy-file file pdf 1))
+     (url
+      (url-copy-file url pdf 1)))))
+
+
+(defun zotra-bibtex-completion ()
+  "Integrate Zotra with bibtex-completion."
+  (interactive)
+  (require 'bibtex-completion)
+  (add-to-list 'bibtex-completion-fallback-options
+               '("Add entry from DOI, ISBN, PMID or arXiv ID (zotra.el)"
+                 . zotra-add-entry-from-search))
+  (add-to-list 'bibtex-completion-fallback-options
+               '("Add entry from web url                     (zotra.el)"
+                 . zotra-add-entry-from-url))
+  (defalias #'bibtex-completion-add-pdf-to-library
+    #'zotra--bibtex-completion-add-pdf-to-library))
 
 
 ;; The end

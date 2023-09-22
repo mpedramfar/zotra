@@ -63,6 +63,48 @@ To download attachments from a url or search identifier, run `zotra-download-att
 
 See `zotra` customization group for a complete list of options and their description.
 
+### Using zotra with a browser and org-protocol
+
+First you need to set up [org-protocol](https://orgmode.org/worg/org-contrib/org-protocol.html). [This section](https://www.orgroam.com/manual.html#Installation-_00281_0029) of the `org-roam` manual describes how to set it up on Linux, macOS, and Windows.
+
+Then make a bookmark in your browser with the following url:
+```
+javascript:location.href=('org-protocol://zotra?url='+ encodeURIComponent(location.href)+'&bibfile='+encodeURIComponent('/path/to/bibfile.bib')+'&format=my-save-format').replace(/'/gi,"%27")
+```
+where `/path/to/bibfile.bib` should be replaced with the path to the bibfile and `my-save-format` should be replaced with one of the acceptable formats listed in the description of `zotra-default-entry-format`.
+
+You can omit format and bibfile to use the value of `zotra-default-entry-format` and `zotra-default-bibliography` respectively:
+```
+javascript:location.href=('org-protocol://zotra?url='+ encodeURIComponent(location.href)).replace(/'/gi,"%27")
+```
+Now you can click on the bookmark in any page and the bibliographic information of the page will be saved into emacs automatically.
+
+### Using zotra with [bibtex-completion](https://github.com/tmalsburg/helm-bibtex/)
+
+If you are using bibtex-completion, add the following line after the your configuration of bibtex-completion:
+```emacs-lisp
+(zotra-bibtex-completion)
+```
+This will add zotra to `bibtex-completion-fallback-options`.
+It will also add the the option to download with zotra when calling `bibtex-completion-add-pdf-to-library`.
+You can also set `zotra-download-attachment-default-directory` to one (or more) of the values in `bibtex-completion-library-path` and `zotra-default-bibliography` to one (or more) of the values in `bibtex-completion-bibliography`, for example:
+```emacs-lisp
+(setq zotra-download-attachment-default-directory bibtex-completion-library-path)
+(setq zotra-default-bibliography bibtex-completion-bibliography)
+```
+Note that bibtex-completion can work with bibtex, biblatex and org-bibtex bibliography files, while zotra can work with formats listed in the description of `zotra-default-entry-format`.
+In particular, org-bibtex is not supported in zotra, so you can't set `zotra-download-attachment-default-directory` equal to `bibtex-completion-library-path` if it contains org-bibtex items.
+
+### Using zotra with [org-ref](https://github.com/jkitchin/org-ref)
+
+The functions in `zotra-after-get-bibtex-entry-hook` are called before a bibtex/biblatex entry is added.
+They take no arguments, and they can be used to cleanup and format new entries.
+For example, if you are using org-ref, you could add this line to your init file:
+```emacs-lisp
+(add-hook 'zotra-after-get-bibtex-entry-hook 'org-ref-clean-bibtex-entry)
+```
+Note that org-ref depends on bibtex-completion.
+
 ### Automatically download attachment after adding a bibtex entry
 
 When the point is at a bibtex entry, the following function downloads the attachment for it and adds the filename to a bibtex field named "File".
@@ -94,112 +136,4 @@ Alternatively, you can add the following function to your init file to add an en
          (append zotra-after-get-bibtex-entry-hook
                  '(zotra-download-attachment-for-current-entry))))
     (zotra-add-entry-from-url url)))
-```
-
-### Using zotra with a browser and org-protocol
-
-First you need to set up [org-protocol](https://orgmode.org/worg/org-contrib/org-protocol.html). [This section](https://www.orgroam.com/manual.html#Installation-_00281_0029) of the `org-roam` manual describes how to set it up on Linux, macOS, and Windows.
-
-Then make a bookmark in your browser with the following url:
-```
-javascript:location.href=('org-protocol://zotra?url='+ encodeURIComponent(location.href)+'&bibfile='+encodeURIComponent('/path/to/bibfile.bib')+'&format=my-save-format').replace(/'/gi,"%27")
-```
-where `/path/to/bibfile.bib` should be replaced with the path to the bibfile and `my-save-format` should be replaced with one of the acceptable formats listed in the description of `zotra-default-entry-format`.
-
-You can omit format and bibfile to use the value of `zotra-default-entry-format` and `zotra-default-bibliography` respectively:
-```
-javascript:location.href=('org-protocol://zotra?url='+ encodeURIComponent(location.href)).replace(/'/gi,"%27")
-```
-Now you can click on the bookmark in any page and the bibliographic information of the page will be saved into emacs automatically.
-
-### Using zotra with [org-ref](https://github.com/jkitchin/org-ref)
-
-The functions in `zotra-after-get-bibtex-entry-hook` are called before a bibtex/biblatex entry is added.
-They take no arguments, and they can be used to cleanup and format new entries.
-For example, if you are using org-ref, you could add this line to your init file:
-```emacs-lisp
-(add-hook 'zotra-after-get-bibtex-entry-hook 'org-ref-clean-bibtex-entry)
-```
-
-### Using zotra with [bibtex-completion](https://github.com/tmalsburg/helm-bibtex/)
-
-If you are using bibtex-completion, you can add zotra as a fallback option in when the search fails:
-```emacs-lisp
-(add-to-list 'bibtex-completion-fallback-options
-             '("Add entry from DOI, ISBN, PMID or arXiv ID (zotra.el)"
-               . zotra-add-entry-from-search))
-
-(add-to-list 'bibtex-completion-fallback-options
-             '("Add entry from web url                     (zotra.el)"
-               . zotra-add-entry-from-url))
-```
-
-You can also add the following functions to your init file.
-These functions allow you to use zotra to add a pdf to your library.
-
-The variable `bibtex-completion-add-pdf-field-after-add-to-library` determines if the pdf path should be added to a field named `bibtex-completion-pdf-field` in the bibtex entry.
-See [bibtex-completion](https://github.com/tmalsburg/helm-bibtex/) for more details about `bibtex-completion-pdf-field`.
-
-```emacs-lisp
-(setq bibtex-completion-add-pdf-field-after-add-to-library t)
-
-(defun bibtex-completion-add-pdf-field (key pdf)
-  (save-window-excursion
-    (bibtex-completion-show-entry (list key))
-    (bibtex-make-field (list bibtex-completion-pdf-field nil pdf) t)
-    (save-buffer)))
-```
-
-Next we override the function `bibtex-completion-add-pdf-to-library` so that it provides the option to use Zotra.
-
-```emacs-lisp
-(defun bibtex-completion-add-pdf-to-library (keys)
-  "Add a PDF to the library for the first entry in KEYS.
-The PDF can be added either from an open buffer, a file, a
-URL, or using Zotra."
-  (let* ((key (car keys))
-         (source (char-to-string
-                  (if (fboundp 'zotra-get-attachment)
-                      (read-char-choice "Add pdf from [b]uffer, [f]ile, [u]rl, or [z]otra? " '(?b ?f ?u ?z))
-                    (read-char-choice "Add pdf from [b]uffer, [f]ile, or [u]rl? " '(?b ?f ?u)))))
-         (buffer (when (string= source "b")
-                   (read-buffer-to-switch "Add pdf buffer: ")))
-         (file (when (string= source "f")
-                 (expand-file-name (read-file-name "Add pdf file: " nil nil t))))
-         (url (cond
-               ((string= source "u")
-                (read-string "Add pdf URL: "))
-               ((string= source "z")
-                (let* ((entry (bibtex-completion-get-entry key))
-                       (url-field (string-trim
-                                   (or (bibtex-completion-get-value "url" entry) ""))))
-                  (zotra-get-attachment
-                   (if (and (< 0 (length url-field))
-                            (y-or-n-p
-                             (format "Use '%s' with Zotra? " url-field)))
-                       url-field
-                     (read-string
-                      "url to use with Zotra: "
-                      (ignore-errors (current-kill 0 t)))))))))
-         (path (-flatten (list bibtex-completion-library-path)))
-         (path (if (cdr path)
-                   (completing-read "Add pdf to: " path nil t)
-                 (car path)))
-         (pdf (expand-file-name (completing-read "Rename pdf to: "
-                                                 (--map (s-concat key it)
-                                                        (-flatten bibtex-completion-pdf-extension))
-                                                 nil nil key)
-                                path)))
-    (cond
-     (buffer
-      (with-current-buffer buffer
-        (write-file pdf t)))
-     (file
-      (copy-file file pdf 1))
-     (url
-      (url-copy-file url pdf 1)))
-    (when (and bibtex-completion-add-pdf-field-after-add-to-library
-               (or buffer file url)
-               (f-exists? pdf))
-      (bibtex-completion-add-pdf-field key pdf))))
 ```
