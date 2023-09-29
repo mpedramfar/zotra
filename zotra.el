@@ -56,10 +56,10 @@ Otherwise, zotra will ask the user to choose one."
 
 (defcustom zotra-url-redirect-functions
   '(zotra-url-redirect--arxiv)
-  "Currently, the Zotero translation server can't handle links to pdf files.
+  "Currently, the Zotero translation server can't handle links to attachments.
 \(See https://github.com/zotero/translation-server/issues/70\).
 These functions provide a way to fix the issue by manually changing the link to
-a pdf to a link to another url for the article.
+an attachment to a link to the url for the article.
 Each function in this list should take a url and return a url. If the function
 is not applicable, it should return its input without change."
   :group 'zotra
@@ -83,14 +83,11 @@ These hooks are run only if ENTRY-FORMAT is \"bibtex\" or \"biblatex\"."
 (defcustom zotra-backend
   'zotra-cli
   "Backend used by zotra.
-TRANSLATION-SERVER: A local instance of translation server.
-CURL_TRANSLATION-SERVER: External curl program and a local instance
-  of translation server.
+TRANSLATION-SERVER: An instance of the Zotero translation server.
 ZOTRA-CLI: The external zotra-cli program."
   :group 'zotra
   :type '(choice
           (const translation-server)
-          (const curl_translation-server)
           (const zotra-cli)))
 
 
@@ -98,8 +95,15 @@ ZOTRA-CLI: The external zotra-cli program."
   "http://127.0.0.1:1969"
   "The url and the port of the Zotero translation server to be used.
 This variable should not end in a trailing slash mark.
-This is only relevant when `zotra-backend' is TRANSLATION-SERVER
-or CURL_TRANSLATION-SERVER"
+This is only relevant when `zotra-backend' is TRANSLATION-SERVER."
+  :group 'zotra
+  :type 'string)
+
+
+(defcustom zotra-use-curl
+  nil
+  "Use the external curl program.
+This is only relevant when `zotra-backend' is TRANSLATION-SERVER."
   :group 'zotra
   :type 'string)
 
@@ -108,7 +112,7 @@ or CURL_TRANSLATION-SERVER"
   '("zotra")
   "The command to run the external zotra-cli program.
 The command should be entered as a list of strings where the
-first element is the command and the rest are its arguments"
+first element is the command and the rest are its arguments."
   :group 'zotra
   :type '(repeat string))
 
@@ -116,8 +120,7 @@ first element is the command and the rest are its arguments"
 (defcustom zotra-url-retrieve-timeout
   3
   "How many seconds to wait for server to get a response.
-This is only relevant when `zotra-backend' is TRANSLATION-SERVER
-or CURL_TRANSLATION-SERVER"
+This is only relevant when `zotra-backend' is TRANSLATION-SERVER."
   :group 'zotra
   :type 'natnum)
 
@@ -207,7 +210,7 @@ If SILENT-ERROR is not nil and the command fails, raise a user-error."
 
 (defun zotra-contact-server (data content-type endpoint &optional param)
   (cond
-   ((equal zotra-backend 'curl_translation-server)
+   ((and (equal zotra-backend 'translation-server) zotra-use-curl)
     (zotra-run-external-command
      (list "curl"
            "--max-time" (format "%s" zotra-url-retrieve-timeout)
@@ -228,7 +231,7 @@ If SILENT-ERROR is not nil and the command fails, raise a user-error."
                            nil nil zotra-url-retrieve-timeout))
          (output
           (if (null response-buffer)
-              (user-error "Request failed. If this issue persists, try changing `zotra-backend'")
+              (user-error "Request failed. If this issue persists, try changing `zotra-use-curl' or `zotra-backend'")
             (with-current-buffer response-buffer
               (goto-char (point-min))
               (search-forward "\n\n")
@@ -316,7 +319,7 @@ If IS-SEARCH is nil, ensure that url is redirected properly using
   (let* ((url (and (not is-search)
                    (or url-or-search-string
                        (read-string
-                        "url: "
+                        "URL: "
                         (let ((link (and (equal major-mode 'org-mode)
                                          (org-element-context))))
                           (if (and link (eq (car link) 'link))
@@ -605,6 +608,21 @@ Return the path to the downloaded attachment."
 
 ;;; zotra + bibtex-completion
 
+
+(declare-function bibtex-completion-get-entry "bibtex-completion")
+(declare-function bibtex-completion-get-value "bibtex-completion")
+(defvar bibtex-completion-library-path)
+(defvar bibtex-completion-pdf-extension)
+(defvar bibtex-completion-fallback-options)
+
+
+(defcustom zotra-bibtex-completion-confirm-url
+  t
+  "Prompt user to confirm url before downloading attachment."
+  :group 'zotra
+  :type 'boolean)
+
+
 (defun zotra--bibtex-completion-add-pdf-to-library (keys)
   "Add a PDF to the library for the first entry in KEYS.
 The PDF can be added either from an open buffer, a file, a
@@ -624,7 +642,10 @@ URL, or using Zotra."
                        (url-field (string-trim
                                    (or (bibtex-completion-get-value "url" entry) ""))))
                   (zotra-get-attachment
-                   (if (< 0 (length url-field))
+                   (if (and (< 0 (length url-field))
+                            (or (not zotra-bibtex-completion-confirm-url)
+                                (y-or-n-p
+                                 (format "Use '%s' with Zotra? " url-field))))
                        url-field
                      (read-string "URL to use with Zotra: ")))))))
          (path (-flatten (list bibtex-completion-library-path)))
@@ -649,15 +670,18 @@ URL, or using Zotra."
 (defun zotra-bibtex-completion ()
   "Integrate Zotra with bibtex-completion."
   (interactive)
-  (require 'bibtex-completion)
   (add-to-list 'bibtex-completion-fallback-options
-               '("Add entry from DOI, ISBN, PMID or arXiv ID (zotra.el)"
+               '("Add entry from DOI, ISBN, PMID or arXiv ID(zotra.el)"
                  . zotra-add-entry-from-search))
   (add-to-list 'bibtex-completion-fallback-options
-               '("Add entry from web url                     (zotra.el)"
+               '("Add entry from web url                    (zotra.el)"
                  . zotra-add-entry-from-url))
   (defalias #'bibtex-completion-add-pdf-to-library
     #'zotra--bibtex-completion-add-pdf-to-library))
+
+
+(with-eval-after-load "bibtex-completion"
+  (zotra-bibtex-completion))
 
 
 ;; The end

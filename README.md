@@ -8,6 +8,7 @@ This is done using [Zotero translators](https://www.zotero.org/support/translato
 
 ## Changelog
 
+- [2023-09-21 Thu]: The backend `curl_translation-server` is removed. Use the variable `zotra-use-curl` instead.
 - [2023-09-21 Thu]: Better integration with bibtex-completion. Also the variables `zotra-download-attachment-default-directory` and `zotra-default-bibliography` can now be lists.
 - [2023-08-18 Fri]: The variable `zotra-after-add-entry-hook` is now obsolete; use `zotra-after-get-bibtex-entry-hook` instead.
 - [2023-07-23 Sun]: Some internal functions have changed. `zotra-url-cleanup-functions` is renamed to `zotra-url-redirect-functions`.
@@ -31,7 +32,7 @@ Alternatively, you can clone the repository and add the following line to your i
 Note that this library tries to connect to a backend to do the translation.
 The choice of backend can be customized through `zotra-backend` variable.
 
-There are 3 options for `zotra-backend`:
+There are 2 options for `zotra-backend`:
 - `zotra-cli`
 
 Use the external [zotra-cli](https://github.com/mpedramfar/zotra-cli) library for translation.
@@ -43,17 +44,12 @@ Note that if `zotra-cli` is installed locally (i.e. the `zotra` command is not a
 (setq zotra-cli-command '("node" "/path/to/zotra-cli/bin/index.js"))
 ```
 
-
 - `translation-server`
 
 Use emacs url libraries to connect to a running instance of zotero translation server.
 See [zotero translation server](https://github.com/zotero/translation-server/) repository for its installation guide.
+If you have the external curl program, it is recommended to set `zotra-use-curl` to `t` to use curl instead.
 
-- `curl_translation-server`
-
-Use the external curl program to connect to a running instance of zotero translation server.
-Sometimes the previous backend fails. In this case you can try this backend.
-To use this backend you need to install the zotero translation server and the curl program.
 
 ## Usage and configuration
 
@@ -82,12 +78,9 @@ Now you can click on the bookmark in any page and the bibliographic information 
 
 ### Using zotra with [bibtex-completion](https://github.com/tmalsburg/helm-bibtex/)
 
-If you are using bibtex-completion, add the following line after the your configuration of bibtex-completion:
-```emacs-lisp
-(zotra-bibtex-completion)
-```
-This will add zotra to `bibtex-completion-fallback-options`.
+If bibtex-completion is loaded, zotra will add two fallback options to to `bibtex-completion-fallback-options`.
 It will also add the the option to download with zotra when calling `bibtex-completion-add-pdf-to-library`.
+
 You can also set `zotra-download-attachment-default-directory` to one (or more) of the values in `bibtex-completion-library-path` and `zotra-default-bibliography` to one (or more) of the values in `bibtex-completion-bibliography`, for example:
 ```emacs-lisp
 (setq zotra-download-attachment-default-directory bibtex-completion-library-path)
