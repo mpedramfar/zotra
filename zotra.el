@@ -1,4 +1,4 @@
-;;; zotra.el --- Library to use Zotero translators      -*- lexical-binding: t; -*-
+;;; zotra.el --- Import bibliographic data from (almost) everywhere  -*- lexical-binding: t; -*-
 
 
 ;; Author: Mohammad Pedramfar <https://github.com/mpedramfar>
@@ -22,10 +22,13 @@
 
 ;;; Commentary:
 
-;; This library provides functions to connect to a local instance of the Zotero
-;; translation server and fetch bibliographic information in different formats
-;; (e.g. bibtex) using website urls or search identifiers (e.g. DOI).
-;; It also provides functions to retrieve attachments using urls.
+;; This library provides functions to fetch bibliographic information
+;; in different formats (e.g. bibtex) using website urls or search
+;; identifiers (e.g. DOI). It also provides functions to fetch
+;; attachments (e.g. PDF files) associated with a url.
+;;
+;; This is done using ZOtero TRAnslators, but without using the Zotero client.
+;;
 ;;
 ;; See the README.md file for details.
 
@@ -38,7 +41,7 @@
 
 
 (defgroup zotra nil
-  "Customization group for zotra."
+  "Customization group for Zotra."
   :group 'zotra)
 
 
@@ -47,9 +50,8 @@
   "Default bibliography file or list of files.
 
 If this variable contains a single file, interactive calls to
-`zotra-add-entry-from-url' and `zotra-add-entry-from-search'
-will not ask the user for the bibfile.
-Otherwise, zotra will ask the user to choose one."
+`zotra-add-entry' will not ask the user for the bibfile.
+Otherwise, Zotra will ask the user to choose one."
   :group 'zotra
   :type '(choice file (repeat file)))
 
@@ -81,12 +83,14 @@ These hooks are run only if ENTRY-FORMAT is \"bibtex\" or \"biblatex\"."
 
 
 (defcustom zotra-backend
-  'zotra-cli
-  "Backend used by zotra.
+  'citoid
+  "Backend used by Zotra.
+CITOID: The Wikimedia Citoid server.
 TRANSLATION-SERVER: An instance of the Zotero translation server.
 ZOTRA-CLI: The external zotra-cli program."
   :group 'zotra
   :type '(choice
+          (const citoid)
           (const translation-server)
           (const zotra-cli)))
 
@@ -95,7 +99,7 @@ ZOTRA-CLI: The external zotra-cli program."
   "http://127.0.0.1:1969"
   "The url and the port of the Zotero translation server to be used.
 This variable should not end in a trailing slash mark.
-This is only relevant when `zotra-backend' is TRANSLATION-SERVER."
+This is only relevant when `zotra-backend' is translation-server."
   :group 'zotra
   :type 'string)
 
@@ -103,7 +107,8 @@ This is only relevant when `zotra-backend' is TRANSLATION-SERVER."
 (defcustom zotra-use-curl
   nil
   "Use the external curl program.
-This is only relevant when `zotra-backend' is TRANSLATION-SERVER."
+This is only relevant when `zotra-backend' is either citoid or
+translation-server."
   :group 'zotra
   :type 'string)
 
@@ -118,37 +123,54 @@ first element is the command and the rest are its arguments."
 
 
 (defcustom zotra-url-retrieve-timeout
-  3
+  15
   "How many seconds to wait for server to get a response.
-This is only relevant when `zotra-backend' is TRANSLATION-SERVER."
+This is only relevant when `zotra-backend' is is either citoid or
+translation-server."
   :group 'zotra
   :type 'natnum)
+
+(defconst zotra-citoid-supported-formats
+  '("mediawiki"
+    "zotero"
+    "bibtex"
+    "mediawiki-basefields")
+  "List of entry formats supported by citoid backend.")
+
+(defconst zotra-translation-server-supported-formats
+  '("bibtex"
+    "biblatex"
+    "bookmarks"
+    "coins"
+    "csljson"
+    "csv"
+    "endnote_xml"
+    "evernote"
+    "mods"
+    "rdf_bibliontology"
+    "rdf_dc"
+    "rdf_zotero"
+    "refer"
+    "refworks_tagged"
+    "ris"
+    "tei"
+    "wikipedia"
+    "zotero")
+"List of entry formats supported by translation-server or zotra-cli backends.
+
+See https://github.com/zotero/translation-server#export-translation
+and https://github.com/zotero/translation-server/blob/master/src/formats.js
+
+Note that the value \"zotero\" is not listed in the above links and
+corresponds to Zotero JSON format.")
 
 
 (defcustom zotra-default-entry-format
   "bibtex"
-  "The bibliography format. Can be one of the following options:
+  "The bibliography format.
 
-bibtex
-biblatex
-bookmarks
-coins
-csljson
-csv
-endnote_xml
-evernote
-mods
-rdf_bibliontology
-rdf_dc
-rdf_zotero
-refer
-refworks_tagged
-ris
-tei
-wikipedia
-
-See https://github.com/zotero/translation-server#export-translation
-and https://github.com/zotero/translation-server/blob/master/src/formats.js"
+Can be one of the value in `zotra-citoid-supported-formats'
+or `zotra-translation-server-supported-formats'"
   :group 'zotra
   :type 'string)
 
@@ -184,7 +206,7 @@ Used in `zotra-download-attachment'."
 
 (defun zotra-run-external-command (cmd &optional silent-error)
   "Run the external command described by the list CMD and return the stdout.
-If SILENT-ERROR is not nil and the command fails, raise a user-error."
+If SILENT-ERROR is nil and the command fails, raise a user-error."
   (with-temp-buffer
     (let* ((stderr-file (make-temp-file "zotra-stderr-"))
            (return-code
@@ -208,53 +230,77 @@ If SILENT-ERROR is not nil and the command fails, raise a user-error."
       out)))
 
 
+(defun zotra-retrieve-synchronously (url &optional headers-alist data error-handler)
+  (let (response-code output)
+    (if zotra-use-curl
+        (let ((output-file (make-temp-file "zotra-output-")))
+          (setq response-code
+                (string-to-number
+                 (zotra-run-external-command
+                  (flatten-list
+                   (list "curl"
+                         "--compressed"
+                         "-w" "%{http_code}"
+                         "-o" output-file
+                         "--max-time" (format "%s" zotra-url-retrieve-timeout)
+                         "-s" "--show-error"
+                         (when data (list "-d" (format "%s" data)))
+                         (mapcar (lambda (h)
+                                   (list "-H" (format "%s : %s" (car h) (cdr h))))
+                                 headers-alist)
+                         url)))))
+          (setq output
+                (with-temp-buffer
+                  (insert-file-contents output-file) (buffer-string)))
+          (delete-file output-file))
+      (let* ((url-request-method (if data "POST" "GET"))
+             (url-request-extra-headers headers-alist)
+             (url-request-data data)
+             (response-buffer
+              (url-retrieve-synchronously url nil nil
+                                          zotra-url-retrieve-timeout)))
+        (unless response-buffer
+          (user-error "Request failed. If this issue persists, try changing `zotra-use-curl' or `zotra-backend'"))
+        (setq response-code
+              (with-current-buffer response-buffer
+                url-http-response-status))
+        (setq output
+              (with-temp-buffer
+                (url-insert-buffer-contents response-buffer url)
+                (buffer-string)))))
+    (if error-handler
+        (funcall error-handler response-code output)
+      (when (not (equal response-code 200))
+        (message "We have a response code: %s\nOutput:\n%s" response-code output)))
+    output))
+
+
+;; For `translation-server' and `zotra-cli' backends
 (defun zotra-contact-server (data content-type endpoint &optional param)
-  (cond
-   ((and (equal zotra-backend 'translation-server) zotra-use-curl)
-    (zotra-run-external-command
-     (list "curl"
-           "--max-time" (format "%s" zotra-url-retrieve-timeout)
-           "-s" "--show-error"
-           "-d" (format "%s" data)
-           "-H" (format "Content-Type: %s" content-type)
-           (concat
-            zotra-server-path "/" endpoint
-            (when param (format "?%s=%s" (car param) (cdr param)))))))
-   ((equal zotra-backend 'translation-server)
-    (let*
-        ((url-request-method "POST")
-         (url-request-extra-headers `(("Content-Type" . ,content-type)))
-         (url-request-data data)
-         (response-buffer (url-retrieve-synchronously
-                           (concat zotra-server-path "/" endpoint
-                                   (when param (format "?%s=%s" (car param) (cdr param))))
-                           nil nil zotra-url-retrieve-timeout))
-         (output
-          (if (null response-buffer)
-              (user-error "Request failed. If this issue persists, try changing `zotra-use-curl' or `zotra-backend'")
-            (with-current-buffer response-buffer
-              (goto-char (point-min))
-              (search-forward "\n\n")
-              (delete-region (point-min) (point))
-              (buffer-string)))))
-      (kill-buffer response-buffer)
-      output))
-   ((equal zotra-backend 'zotra-cli)
-    (zotra-run-external-command
-     (append
-      zotra-cli-command
-      (if param
-          (if (equal "single" (car param))
-              (list "--single")
-            (list (format "--%s=%s" (car param) (cdr param))))
-        (when (equal content-type "application/json")
-          (list "--json")))
-      (list endpoint data))
-     t))))
+  (cl-case zotra-backend
+    (translation-server
+     (zotra-retrieve-synchronously
+      (concat zotra-server-path "/" endpoint
+              (when param (format "?%s=%s" (car param) (cdr param))))
+      `(("Content-Type" . ,content-type)) data))
+    (zotra-cli
+     (zotra-run-external-command
+      (append
+       zotra-cli-command
+       (if param
+           (if (equal "single" (car param))
+               (list "--single")
+             (list (format "--%s=%s" (car param) (cdr param))))
+         (when (equal content-type "application/json")
+           (list "--json")))
+       (list endpoint data))
+      t))))
 
 
+;; For `translation-server' and `zotra-cli' backends
 (defun zotra-get-json (data &optional endpoint)
   "Get bibliographic data of DATA in Zotero JSON format.
+
 ENDPOINT must be \"search\" or \"web\". Any value other than \"search\" will
 be treated as \"web\"."
   (let* ((j (zotra-contact-server
@@ -291,14 +337,12 @@ be treated as \"web\"."
        (user-error "JSON parse error: %s" j)))))
 
 
-(defun zotra-get-entry-from-json (json &optional entry-format)
+;; For `translation-server' and `zotra-cli' backends
+(defun zotra-get-entry-from-json (json entry-format)
   "Convert Zotero JSON format to ENTRY-FORMAT.
-If ENTRY_FORMAT is nil, convert to `zotra-default-entry-format'.
 
 This function does NOT run the hooks in `zotra-after-get-bibtex-entry-hook'."
-  (let* ((entry-format (or entry-format
-                           zotra-default-entry-format))
-         (entry (zotra-contact-server
+  (let* ((entry (zotra-contact-server
                  json "application/json" "export" `("format" . ,entry-format))))
     (cond ((string= entry "Bad Request")
            (user-error "Bad Request"))
@@ -307,61 +351,90 @@ This function does NOT run the hooks in `zotra-after-get-bibtex-entry-hook'."
           (t entry))))
 
 
-(defun zotra-query-url-or-search-string (&optional url-or-search-string is-search)
+(defun zotra-get-entry-1 (data entry-format &optional endpoint)
+  (cond
+   ((equal zotra-backend 'citoid)
+    (zotra-retrieve-synchronously
+     (format "https://en.wikipedia.org/api/rest_v1/data/citation/%s/%s"
+             entry-format
+             (url-hexify-string data))
+     nil nil
+     (lambda (response-code output)
+       (cl-case response-code
+         (200 nil)
+         (404
+          (user-error "404: Citation data was not found" response-code output))
+         (t
+          (user-error "Citoid server responded with code: %s\n%s"
+                      response-code
+                      (or (ignore-errors
+                            (string-join
+                             (mapcar
+                              (lambda (it) (format "%s: %s" (car it) (cdr it)))
+                              (json-parse-string output :object-type 'alist))
+                             "\n"))
+                          output)))))))
+   ((equal entry-format "zotero")
+    (zotra-get-json data endpoint))
+   (t
+    (zotra-get-entry-from-json
+     (zotra-get-json data endpoint) entry-format))))
+  
+
+(defun zotra-query-url-or-search-string (&optional url-or-search-string)
   "Ask the user where to get bibliographic data from.
 
-If URL-OR-SEARCH-STRING and IS-SEARCH are nil, ask the user for the url.
-If URL-OR-SEARCH-STRING is nil and IS-SEARCH is non-nil, ask for search
-identifier.
-
-If IS-SEARCH is nil, ensure that url is redirected properly using
+If URL-OR-SEARCH-STRING is nil, ask the user.
+If it is a url, ensure that url is redirected properly using
 `zotra-url-redirect-functions'."
-  (let* ((url (and (not is-search)
-                   (or url-or-search-string
-                       (read-string
-                        "URL: "
-                        (let ((link (and (equal major-mode 'org-mode)
-                                         (org-element-context))))
-                          (if (and link (eq (car link) 'link))
-                              (org-element-property :raw-link link)
-                            (ignore-errors (current-kill 0 t))))))))
-         (identifier (and is-search
-                          (or url-or-search-string
-                              (read-string
-                               "search identifier (DOI, ISBN, PMID, arXiv ID): "
-                               (ignore-errors (current-kill 0 t)))))))
-    (when url
+  (let* ((input (or url-or-search-string
+                    (read-string
+                     (if (equal zotra-backend 'citoid)
+                         "URL or search identifier (DOI, PMCID, PMID or QID): "
+                       "URL or search identifier (DOI, ISBN, PMID, arXiv ID): ")
+                     (ignore-errors (current-kill 0 t))))))
+    (if (not (string-match-p "https?://" input))
+        (cons input "search")
       (mapc (lambda (x)
-              (setq url (funcall x url)))
-            zotra-url-redirect-functions))
-    (cons (or url identifier)
-          (if is-search "search" "web"))))
+              (setq input (funcall x input)))
+            zotra-url-redirect-functions)
+      (cons input "web"))))
 
 
-(defun zotra-get-entry (&optional url-or-search-string is-search entry-format)
+(defun zotra-get-entry (&optional url-or-search-string entry-format)
   "Get bibliography entry.
 
-If IS-SEARCH is nil, treat URL-OR-SEARCH-STRING as a url.
-Otherwise, treat it as a search identifier.
-
-Return the entry in the format ENTRY-FORMAT or `zotra-default-entry-format'
-if ENTRY_FORMAT is nil.
+Return the entry for URL-OR-SEARCH-STRING in the format ENTRY-FORMAT or
+`zotra-default-entry-format' if ENTRY_FORMAT is nil.
+If the format is not supported by the current backend, default to \"bibtex\".
 
 When ENTRY-FORMAT is \"bibtex\" or \"biblatex\", this function runs the hooks
 in `zotra-after-get-bibtex-entry-hook' before returning its output."
-  (let* ((query-result (zotra-query-url-or-search-string
-                        url-or-search-string is-search))
+  (unless (member zotra-backend '(citoid zotra-cli translation-server))
+    (user-error "Unknown backend: %s" zotra-backend))
+  (let* ((query-result
+          (zotra-query-url-or-search-string url-or-search-string))
          (data (car query-result))
          (endpoint (cdr query-result))
          (entry-format (or entry-format
                            zotra-default-entry-format))
+         (entry-format
+          (if (member entry-format
+                      (if (equal zotra-backend 'citoid)
+                          zotra-citoid-supported-formats
+                        zotra-translation-server-supported-formats))
+              entry-format
+            (message (concat
+                      "The entry format \"%s\" is not supported by the backend \"%s\".\n"
+                      "Using \"bibtex\" instead...")
+                     entry-format zotra-backend)
+            "bibtex"))
          (entry-bibtex-dialect
           (cond
            ((equal entry-format "bibtex") 'BibTeX)
            ((equal entry-format "biblatex") 'biblatex))))
   (with-temp-buffer
-    (insert "\n" (zotra-get-entry-from-json
-                  (zotra-get-json data endpoint) entry-format))
+    (insert "\n" (zotra-get-entry-1 data entry-format endpoint))
     (goto-char (point-min))
     (when entry-bibtex-dialect
       (bibtex-mode)
@@ -376,7 +449,19 @@ in `zotra-after-get-bibtex-entry-hook' before returning its output."
     (buffer-string))))
 
 
-(defun zotra-add-entry (&optional url-or-search-string is-search entry-format bibfile)
+(defun zotra-add-entry (&optional url-or-search-string entry-format bibfile)
+  "Add bibliography entry for URL-OR-SEARCH-STRING to BIBFILE.
+
+Pass URL-OR-SEARCH-STRING and ENTRY-FORMAT to `zotra-get-entry'
+to get the entry.
+
+If BIBFILE is the symbol `here', then insert entry at point.
+If BIBFILE is nil, use `zotra-default-bibliography'.
+If `zotra-default-bibliography' is also nil, ask the user to choose
+the bib file.
+
+Return the last bibtex key of the added entries."
+  (interactive)
   (let ((bibfile
          (or bibfile
              (and (stringp zotra-default-bibliography) zotra-default-bibliography)
@@ -389,7 +474,7 @@ in `zotra-after-get-bibtex-entry-hook' before returning its output."
                       (directory-files "." t ".*\\.bib\\'")
                       (and (fboundp #'org-cite-list-bibliography-files)
                            (org-cite-list-bibliography-files))))))
-        (entry (zotra-get-entry url-or-search-string is-search entry-format))
+        (entry (zotra-get-entry url-or-search-string entry-format))
         last-key)
     (if (equal bibfile 'here)
         (progn
@@ -411,36 +496,14 @@ in `zotra-after-get-bibtex-entry-hook' before returning its output."
     last-key))
 
 
-(defun zotra-add-entry-from-url (&optional url entry-format bibfile)
-  "Add bibliography entry for URL to BIBFILE.
-
-Pass URL-OR-SEARCH-STRING, IS-SEARCH and ENTRY-FORMAT to `zotra-get-entry'
-to get the entry.
-
-If BIBFILE is the symbol `here', then insert entry at point.
-If BIBFILE is nil, use `zotra-default-bibliography'.
-If `zotra-default-bibliography' is also nil, ask the user to choose
-the bib file.
-
-Return the last bibtex key of the added entries."
-  (interactive)
-  (zotra-add-entry url nil entry-format bibfile))
+(define-obsolete-function-alias
+  'zotra-add-entry-from-url 'zotra-add-entry
+  "[2023-09-30 Fri]")
 
 
-(defun zotra-add-entry-from-search (&optional identifier entry-format bibfile)
-  "Add bibliography entry for search IDENTIFIER to BIBFILE.
-
-Pass URL-OR-SEARCH-STRING, IS-SEARCH and ENTRY-FORMAT to `zotra-get-entry'
-to get the entry.
-
-If BIBFILE is the symbol `here', then insert entry at point.
-If BIBFILE is nil, use `zotra-default-bibliography'.
-If `zotra-default-bibliography' is also nil, ask the user to choose
-the bib file.
-
-Return the last bibtex key of the added entries."
-  (interactive)
-  (zotra-add-entry identifier t entry-format bibfile))
+(define-obsolete-function-alias
+  'zotra-add-entry-from-search 'zotra-add-entry
+  "[2023-09-30 Fri]")
 
 
 ;; attachments
@@ -465,13 +528,16 @@ Return the last bibtex key of the added entries."
       (user-error "Zotra failed to find any attachments in page"))))
 
 
-(defun zotra-get-attachment (&optional url-or-search-string is-search all)
-  "Get the attachments for the URL-OR-SEARCH-STRING.
+(defun zotra-get-attachment (&optional url-or-search-string all)
+  "Get the attachment URLs for the URL-OR-SEARCH-STRING.
 If IS-SEARCH is nil, treat URL-OR-SEARCH-STRING as a url. Otherwise, treat it
 as a search identifier.
 If ALL is non-nil, return the list of attachments."
-  (let* ((query-result (zotra-query-url-or-search-string
-                        url-or-search-string is-search))
+  (when (not (equal zotra-backend 'zotra-cli))
+    (message "Fetching attachments is only supported with `zotra-cli' backend. Trying `zotra-cli'..."))
+  (let* ((zotra-backend 'zotra-cli)
+         (query-result
+          (zotra-query-url-or-search-string url-or-search-string))
          (data (car query-result))
          (endpoint (cdr query-result))
          (attachments (zotra-get-attachments-1 data endpoint)))
@@ -505,8 +571,21 @@ If ALL is non-nil, return the list of attachments."
         t))))
 
 
-(defun zotra-download-attachment (attachment-url download-dir &optional filename confirm-filename)
-  (let* ((download-dir (expand-file-name
+(defun zotra-download-attachment (&optional url-or-search-string download-dir filename confirm-filename)
+  "Download the attachments for URL-OR-SEARCH-STRING.
+
+If URL-OR-SEARCH-STRING is nil, ask the user.
+If FILENAME does not contain directory, use the directory DOWNLOAD-DIR.
+If DOWNLOAD-DIR is nil, use `zotra-download-attachment-default-directory'.
+If `zotra-download-attachment-default-directory' is also nil, ask for
+the download directory.
+If FILENAME is nil or CONFIRM-FILENAME is non-nil, ask for the filename
+to save.
+
+Return the path to the downloaded attachment."
+  (interactive)
+  (let* ((attachment-url (zotra-get-attachment url-or-search-string))
+         (download-dir (expand-file-name
                         (or (when filename (file-name-directory filename))
                             download-dir
                             (and (stringp zotra-download-attachment-default-directory)
@@ -539,40 +618,14 @@ If ALL is non-nil, return the list of attachments."
     filename))
 
 
-(defun zotra-download-attachment-from-url (&optional url download-dir filename confirm-filename)
-  "Download the attachments for the URL.
-
-If URL is nil, ask the user.
-If FILENAME does not contain directory, use the directory DOWNLOAD-DIR.
-If DOWNLOAD-DIR is nil, use `zotra-download-attachment-default-directory'.
-If `zotra-download-attachment-default-directory' is also nil, ask for
-the download directory.
-If FILENAME is nil or CONFIRM-FILENAME is non-nil, ask for the filename
-to save.
-
-Return the path to the downloaded attachment."
-  (interactive)
-  (zotra-download-attachment
-   (zotra-get-attachment url)
-   download-dir filename confirm-filename))
+(define-obsolete-function-alias
+  'zotra-download-attachment-from-url 'zotra-download-attachment
+  "[2023-09-30 Fri]")
 
 
-(defun zotra-download-attachment-from-search (&optional identifier download-dir filename confirm-filename)
-  "Download the attachments for the IDENTIFIER.
-
-If IDENTIFIER is nil, ask the user.
-If FILENAME does not contain directory, use the directory DOWNLOAD-DIR.
-If DOWNLOAD-DIR is nil, use `zotra-download-attachment-default-directory'.
-If `zotra-download-attachment-default-directory' is also nil, ask for
-the download directory.
-If FILENAME is nil or CONFIRM-FILENAME is non-nil, ask for the filename
-to save.
-
-Return the path to the downloaded attachment."
-  (interactive)
-  (zotra-download-attachment
-   (zotra-get-attachment identifier t)
-   download-dir filename confirm-filename))
+(define-obsolete-function-alias
+  'zotra-download-attachment-from-search 'zotra-download-attachment
+  "[2023-09-30 Fri]")
 
 
 ;; zotra-protocol
@@ -584,7 +637,7 @@ Return the path to the downloaded attachment."
         (entry-format (plist-get info :format))
         (zotra-multiple-item-strategy zotra-protocol-multiple-item-strategy))
     (message "Zotra received: `%s' to be saved in `%s'" url bibfile)
-    (zotra-add-entry-from-url url entry-format bibfile)
+    (zotra-add-entry url entry-format bibfile)
     nil))
 
 
@@ -606,9 +659,10 @@ Return the path to the downloaded attachment."
     url))
 
 
-;;; zotra + bibtex-completion
+;;; Zotra + bibtex-completion
 
 
+(declare-function bibtex-completion-add-pdf-to-library "bibtex-completion")
 (declare-function bibtex-completion-get-entry "bibtex-completion")
 (declare-function bibtex-completion-get-value "bibtex-completion")
 (defvar bibtex-completion-library-path)
@@ -648,13 +702,13 @@ URL, or using Zotra."
                                  (format "Use '%s' with Zotra? " url-field))))
                        url-field
                      (read-string "URL to use with Zotra: ")))))))
-         (path (-flatten (list bibtex-completion-library-path)))
+         (path (flatten-list bibtex-completion-library-path))
          (path (if (cdr path)
                    (completing-read "Add pdf to: " path nil t)
                  (car path)))
          (pdf (expand-file-name (completing-read "Rename pdf to: "
-                                                 (--map (s-concat key it)
-                                                        (-flatten bibtex-completion-pdf-extension))
+                                                 (mapcar (lambda (it) (concat key it))
+                                                         (flatten-list bibtex-completion-pdf-extension))
                                                  nil nil key)
                                 path)))
     (cond
@@ -671,11 +725,8 @@ URL, or using Zotra."
   "Integrate Zotra with bibtex-completion."
   (interactive)
   (add-to-list 'bibtex-completion-fallback-options
-               '("Add entry from DOI, ISBN, PMID or arXiv ID(zotra.el)"
-                 . zotra-add-entry-from-search))
-  (add-to-list 'bibtex-completion-fallback-options
-               '("Add entry from web url                    (zotra.el)"
-                 . zotra-add-entry-from-url))
+               '("Add entry from URL or search identifier   (zotra.el)"
+                 . zotra-add-entry))
   (defalias #'bibtex-completion-add-pdf-to-library
     #'zotra--bibtex-completion-add-pdf-to-library))
 
