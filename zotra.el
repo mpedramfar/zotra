@@ -269,9 +269,7 @@ If SILENT-ERROR is nil and the command fails, raise a user-error."
                 (url-insert-buffer-contents response-buffer url)
                 (buffer-string)))))
     (if error-handler
-        (funcall error-handler response-code output)
-      (when (not (equal response-code 200))
-        (message "We have a response code: %s\nOutput:\n%s" response-code output)))
+        (funcall error-handler response-code output))
     output))
 
 
@@ -636,7 +634,8 @@ Return the path to the downloaded attachment."
         (bibfile (plist-get info :bibfile))
         (entry-format (plist-get info :format))
         (zotra-multiple-item-strategy zotra-protocol-multiple-item-strategy))
-    (message "Zotra received: `%s' to be saved in `%s'" url bibfile)
+    (message "Zotra received: `%s' to be saved in `%s'"
+             url (or bibfile "zotra-default-bibliography"))
     (zotra-add-entry url entry-format bibfile)
     nil))
 
