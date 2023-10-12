@@ -88,7 +88,12 @@ Now you can click on the bookmark in any page and the bibliographic information 
 
 ### Using Zotra with [bibtex-completion](https://github.com/tmalsburg/helm-bibtex/)
 
-If bibtex-completion is loaded, Zotra will add a fallback options to `bibtex-completion-fallback-options`.
+Add the following line to your init file.
+```emacs-lisp
+(with-eval-after-load "bibtex-completion"
+  (zotra-bibtex-completion))
+```
+By adding this, Zotra will add a fallback options to `bibtex-completion-fallback-options`.
 It will also add the option to download with Zotra when calling `bibtex-completion-add-pdf-to-library`.
 
 You can also set `zotra-download-attachment-default-directory` to one (or more) of the values in `bibtex-completion-library-path` and `zotra-default-bibliography` to one (or more) of the values in `bibtex-completion-bibliography`, for example:
@@ -129,7 +134,7 @@ When the point is at a bibtex entry, the following function downloads the attach
 ```
 
 This function can be added to `zotra-after-get-bibtex-entry-hook`. 
-*Note that this function chooses the bibtex key as the filename so it should be be after any hook that might change the bibtex key.*
+*Note that this function chooses the bibtex key as the filename so it should be after any hook that might change the bibtex key.*
 When it is added to this hook, any time a bibtex entry is added, its attachments will also be downloaded.
 Alternatively, you can add the following function to your init file to add an entry from url and download its attachments.
 

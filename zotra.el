@@ -42,7 +42,7 @@
 
 (defgroup zotra nil
   "Customization group for Zotra."
-  :group 'zotra)
+  :group 'editing)
 
 
 (defcustom zotra-default-bibliography
@@ -246,7 +246,7 @@ If SILENT-ERROR is nil and the command fails, raise a user-error."
                          "-s" "--show-error"
                          (when data (list "-d" (format "%s" data)))
                          (mapcar (lambda (h)
-                                   (list "-H" (format "%s : %s" (car h) (cdr h))))
+                                   (list "-H" (format "%s: %s" (car h) (cdr h))))
                                  headers-alist)
                          url)))))
           (setq output
@@ -255,7 +255,7 @@ If SILENT-ERROR is nil and the command fails, raise a user-error."
           (delete-file output-file))
       (let* ((url-request-method (if data "POST" "GET"))
              (url-request-extra-headers headers-alist)
-             (url-request-data data)
+             (url-request-data (encode-coding-string data 'utf-8))
              (response-buffer
               (url-retrieve-synchronously url nil nil
                                           zotra-url-retrieve-timeout)))
@@ -263,7 +263,7 @@ If SILENT-ERROR is nil and the command fails, raise a user-error."
           (user-error "Request failed. If this issue persists, try changing `zotra-use-curl' or `zotra-backend'"))
         (setq response-code
               (with-current-buffer response-buffer
-                url-http-response-status))
+                (and (boundp 'url-http-response-status) url-http-response-status)))
         (setq output
               (with-temp-buffer
                 (url-insert-buffer-contents response-buffer url)
@@ -728,10 +728,6 @@ URL, or using Zotra."
                  . zotra-add-entry))
   (defalias #'bibtex-completion-add-pdf-to-library
     #'zotra--bibtex-completion-add-pdf-to-library))
-
-
-(with-eval-after-load "bibtex-completion"
-  (zotra-bibtex-completion))
 
 
 ;; The end
