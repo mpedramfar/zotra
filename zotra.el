@@ -351,11 +351,12 @@ If SILENT-ERROR is nil and the command fails, raise a user-error."
 
 ENDPOINT must be \"search\" or \"web\". Any value other than \"search\" will
 be treated as \"web\"."
-  (let* ((j (zotra-contact-server
-             data "text/plain" (or endpoint "web")
-             (when (and (eq zotra-multiple-item-strategy 'single)
-                        (not (equal endpoint "search")))
-               '("single" . "1")))))
+  (let* ((j (or (zotra-contact-server
+                 data "text/plain" (or endpoint "web")
+                 (when (and (eq zotra-multiple-item-strategy 'single)
+                            (not (equal endpoint "search")))
+                   '("single" . "1")))
+                "")))
     (condition-case nil
         (let* ((p (json-parse-string j :object-type 'alist :array-type 'list))
                (p-items (assoc 'items p)))
