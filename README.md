@@ -69,8 +69,8 @@ Set this variable to nil if you want to start the server externally or if you ar
 The path of the server is specified by `zotra-server-path`.  
 If you have used the default settings to install Zotra server, you only need to add the following lines to your init file:
 ```emacs-lisp
-(setq zotra-backend 'tranlsation-server)
-(setq zotra-local-server-directory "/path/to/tranlsation-server/")
+(setq zotra-backend 'translation-server)
+(setq zotra-local-server-directory "/path/to/translation-server/")
 ```
 
 - `zotra-cli` (**This backend is obsolete**)
