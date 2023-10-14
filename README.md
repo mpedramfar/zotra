@@ -10,6 +10,7 @@ This is done using [**ZO**tero **TRA**nslators](https://www.zotero.org/support/t
 
 ## Changelog
 
+- [2023-10-14 Thu]: The `zotra-server` backend added.
 - [2023-09-30 Thu]: The `citoid` backend added.
 - [2023-09-30 Thu]: The functions `zotra-add-entry-from-url`, `zotra-add-entry-from-search`, `zotra-download-attachment-from-url` and `zotra-download-attachment-from-search` are obsolete. Use `zotra-add-entry` and `zotra-download-attachment` instead.
 - [2023-09-30 Thu]: The `curl_translation-server` backend removed. Use the variable `zotra-use-curl` instead.
@@ -36,32 +37,57 @@ Alternatively, you can clone the repository and add the following line to your i
 This library tries to connect to a backend to do the translation.
 The choice of backend can be customized through `zotra-backend` variable.
 
-There are 3 options for `zotra-backend`:
+There are 4 options for `zotra-backend`:
 
 - `citoid`
 
 Use the Wikimedia Citoid public API.
 See [here](https://en.wikipedia.org/api/rest_v1/#/Citation/getCitation) for terms of service and documentation.
 This is the default backend since it only uses a public API and does not require any extra installations.
-However, this backend is more limited than the other two options.
+However, this backend is more limited than the other options.
 
-- `zotra-cli`
+- `zotra-server`
 
-Use the external [zotra-cli](https://github.com/mpedramfar/zotra-cli) library for translation.
-This is the recommended backend to use as **it is the only backend that is able to fetch attachments**.
-See [zotra-cli](https://github.com/mpedramfar/zotra-cli) repository for its installation guide.
-
-Note that if `zotra-cli` is installed locally (i.e. the `zotra` command is not available from your shell), then you can customize `zotra-cli-command` to point at the installed library:
-```elisp
-(setq zotra-cli-command '("node" "/path/to/zotra-cli/bin/index.js"))
+Use a remote or local instance of [Zotra server](https://github.com/mpedramfar/zotra-server).
+This is the recommended backend to use as **it is able to fetch attachments**.
+See [Zotra server](https://github.com/mpedramfar/zotra-server) for instructions on how to install locally.
+If you have have installed an instance of the server, you may instruct Zotra to run the server locally by setting the variable `zotra-local-server-directory` to the local git directory containing the sever.
+Set this variable to nil if you want to start the server externally or if you are connecting to a remote server.
+The path of the server is specified by `zotra-server-path`.  
+If you have used the default settings to install Zotra server, you only need to add the following lines to your init file:
+```emacs-lisp
+(setq zotra-backend 'zotra-server)
+(setq zotra-local-server-directory "/path/to/zotra-server/")
 ```
 
 - `translation-server`
 
-Use emacs url libraries to connect to a running instance of Zotero translation server.
-See [Zotero translation server](https://github.com/zotero/translation-server/) repository for its installation guide.
-If you have the external curl program, it is recommended to set `zotra-use-curl` to `t` to use curl instead.
+Use a remote or local instance of [Zotero translation server](https://github.com/zotero/translation-server/).
+See [Zotero translation server](https://github.com/zotero/translation-server/) for instructions on how to install locally.
+If you have have installed an instance of the server, you may instruct Zotra to run the server locally by setting the variable `zotra-local-server-directory` to the local git directory containing the sever.
+Set this variable to nil if you want to start the server externally or if you are connecting to a remote server.
+The path of the server is specified by `zotra-server-path`.  
+If you have used the default settings to install Zotra server, you only need to add the following lines to your init file:
+```emacs-lisp
+(setq zotra-backend 'tranlsation-server)
+(setq zotra-local-server-directory "/path/to/tranlsation-server/")
+```
 
+- `zotra-cli` (**This backend is obsolete**)
+
+Use the [Zotra sever](https://github.com/mpedramfar/zotra-server) library, as a command-line tool.
+This backend is also able to fetch attachments. 
+However, it is significantly slower than `zotra-server` backend and **will be removed in the future**.
+See [Zotra server](https://github.com/mpedramfar/zotra-server) repository for its installation guide.  
+Note that if Zotra server is not installed globally (i.e. the `zotra` command is not available from your shell), then you can customize `zotra-cli-command` to point at the installed library:
+```emacs-lisp
+(setq zotra-backend 'zotra-cli)
+(setq zotra-cli-command '("node" "/path/to/zotra-server/bin/index.js"))
+```
+
+
+If you have the external curl program, it is recommended to set `zotra-use-curl` to `t` to use curl instead.
+This option affects all backends except `zotra-cli`.
 
 ## Usage and configuration
 

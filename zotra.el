@@ -86,11 +86,13 @@ These hooks are run only if ENTRY-FORMAT is \"bibtex\" or \"biblatex\"."
   'citoid
   "Backend used by Zotra.
 CITOID: The Wikimedia Citoid server.
+ZOTRA-SERVER: An instance of the Zotra server.
 TRANSLATION-SERVER: An instance of the Zotero translation server.
-ZOTRA-CLI: The external zotra-cli program."
+ZOTRA-CLI: Zotra server used as a command-line program."
   :group 'zotra
   :type '(choice
           (const citoid)
+          (const zotra-server)
           (const translation-server)
           (const zotra-cli)))
 
@@ -99,23 +101,36 @@ ZOTRA-CLI: The external zotra-cli program."
   "http://127.0.0.1:1969"
   "The url and the port of the Zotero translation server to be used.
 This variable should not end in a trailing slash mark.
-This is only relevant when `zotra-backend' is translation-server."
+This is only relevant when `zotra-backend' is translation-server
+or zotra-server."
   :group 'zotra
   :type 'string)
+
+
+(defcustom zotra-local-server-directory
+  nil
+  "The directory of the local server.
+When this variable is non-nil, Zotra will attempt to start the
+server. Set this variable to nil if you are using a remote server
+or if you want to run the server yourself.
+This is only relevant when `zotra-backend' is translation-server
+or zotra-server."
+  :group 'zotra
+  :type '(choice (const nil) directory))
 
 
 (defcustom zotra-use-curl
   nil
   "Use the external curl program.
-This is only relevant when `zotra-backend' is either citoid or
-translation-server."
+This is only relevant when `zotra-backend' is either citoid,
+translation-server or zotra-server."
   :group 'zotra
   :type 'string)
 
 
 (defcustom zotra-cli-command
   '("zotra")
-  "The command to run the external zotra-cli program.
+  "The command to run the Zotra server as a cli program.
 The command should be entered as a list of strings where the
 first element is the command and the rest are its arguments."
   :group 'zotra
@@ -135,7 +150,7 @@ translation-server."
     "zotero"
     "bibtex"
     "mediawiki-basefields")
-  "List of entry formats supported by citoid backend.")
+  "List of entry formats supported by the citoid backend.")
 
 (defconst zotra-translation-server-supported-formats
   '("bibtex"
@@ -156,7 +171,7 @@ translation-server."
     "tei"
     "wikipedia"
     "zotero")
-"List of entry formats supported by translation-server or zotra-cli backends.
+"List of entry formats supported by translation-server, zotra-server or zotra-cli backends.
 
 See https://github.com/zotero/translation-server#export-translation
 and https://github.com/zotero/translation-server/blob/master/src/formats.js
@@ -230,7 +245,7 @@ If SILENT-ERROR is nil and the command fails, raise a user-error."
       out)))
 
 
-(defun zotra-retrieve-synchronously (url &optional headers-alist data error-handler)
+(defun zotra-retrieve-synchronously (url &optional headers-alist data response-handler)
   (let (response-code output)
     (if zotra-use-curl
         (let ((output-file (make-temp-file "zotra-output-")))
@@ -255,7 +270,7 @@ If SILENT-ERROR is nil and the command fails, raise a user-error."
           (delete-file output-file))
       (let* ((url-request-method (if data "POST" "GET"))
              (url-request-extra-headers headers-alist)
-             (url-request-data (encode-coding-string data 'utf-8))
+             (url-request-data (when data (encode-coding-string data 'utf-8)))
              (response-buffer
               (url-retrieve-synchronously url nil nil
                                           zotra-url-retrieve-timeout)))
@@ -268,34 +283,69 @@ If SILENT-ERROR is nil and the command fails, raise a user-error."
               (with-temp-buffer
                 (url-insert-buffer-contents response-buffer url)
                 (buffer-string)))))
-    (if error-handler
-        (funcall error-handler response-code output))
+    (if response-handler
+        (funcall response-handler response-code output))
     output))
 
 
-;; For `translation-server' and `zotra-cli' backends
+(defvar zotra-local-server-process nil)
+(defvar zotra-local-server-process-directory nil)
+(defvar zotra-local-server-process-buffer-name "*zotra-local-server*")
+
+
+(defun zotra-maybe-start-local-server ()
+  (when (and zotra-local-server-directory
+             (member zotra-backend '(translation-server zotra-server)))
+    (let ((start (not (process-live-p zotra-local-server-process))))
+      (when (and (process-live-p zotra-local-server-process)
+                 (not (equal zotra-local-server-process-directory
+                             zotra-local-server-directory)))
+        (zotra-kill-local-server)
+        (setq start t))
+      (when start
+        (message "Starting local %s..." zotra-backend)
+        (setq zotra-local-server-process
+              (make-process
+               :name "zotra-server-process"
+               :buffer (and zotra-local-server-process-buffer-name
+                            (get-buffer-create
+                             zotra-local-server-process-buffer-name))
+               :noquery t
+               :command (list "npm" "start" "--prefix"
+                              zotra-local-server-directory)))
+        (setq zotra-local-server-process-directory
+              zotra-local-server-directory)
+        (sleep-for 2)))))
+
+
+(defun zotra-kill-local-server ()
+  (when (process-live-p zotra-local-server-process)
+    (kill-process zotra-local-server-process)))
+
+
+;; For `zotra-server', `translation-server' and `zotra-cli' backends
 (defun zotra-contact-server (data content-type endpoint &optional param)
-  (cl-case zotra-backend
-    (translation-server
-     (zotra-retrieve-synchronously
-      (concat zotra-server-path "/" endpoint
-              (when param (format "?%s=%s" (car param) (cdr param))))
-      `(("Content-Type" . ,content-type)) data))
-    (zotra-cli
-     (zotra-run-external-command
-      (append
-       zotra-cli-command
-       (if param
-           (if (equal "single" (car param))
-               (list "--single")
-             (list (format "--%s=%s" (car param) (cdr param))))
-         (when (equal content-type "application/json")
-           (list "--json")))
-       (list endpoint data))
-      t))))
+  (cond 
+   ((member zotra-backend '(translation-server zotra-server))
+    (zotra-retrieve-synchronously
+     (concat zotra-server-path "/" endpoint
+             (when param (format "?%s=%s" (car param) (cdr param))))
+     `(("Content-Type" . ,content-type)) data))
+   ((equal zotra-backend 'zotra-cli)
+    (zotra-run-external-command
+     (append
+      zotra-cli-command
+      (if param
+          (if (equal "single" (car param))
+              (list "--single")
+            (list (format "--%s=%s" (car param) (cdr param))))
+        (when (equal content-type "application/json")
+          (list "--json")))
+      (list endpoint data))
+     t))))
 
 
-;; For `translation-server' and `zotra-cli' backends
+;; For `zotra-server', `translation-server' and `zotra-cli' backends
 (defun zotra-get-json (data &optional endpoint)
   "Get bibliographic data of DATA in Zotero JSON format.
 
@@ -335,7 +385,7 @@ be treated as \"web\"."
        (user-error "JSON parse error: %s" j)))))
 
 
-;; For `translation-server' and `zotra-cli' backends
+;; For `zotra-server', `translation-server' and `zotra-cli' backends
 (defun zotra-get-entry-from-json (json entry-format)
   "Convert Zotero JSON format to ENTRY-FORMAT.
 
@@ -350,6 +400,7 @@ This function does NOT run the hooks in `zotra-after-get-bibtex-entry-hook'."
 
 
 (defun zotra-get-entry-1 (data entry-format &optional endpoint)
+  (zotra-maybe-start-local-server)
   (cond
    ((equal zotra-backend 'citoid)
     (zotra-retrieve-synchronously
@@ -372,6 +423,8 @@ This function does NOT run the hooks in `zotra-after-get-bibtex-entry-hook'."
                               (json-parse-string output :object-type 'alist))
                              "\n"))
                           output)))))))
+   ((not (member zotra-backend '(citoid zotra-cli zotra-server translation-server)))
+    nil)
    ((equal entry-format "zotero")
     (zotra-get-json data endpoint))
    (t
@@ -408,9 +461,12 @@ If the format is not supported by the current backend, default to \"bibtex\".
 
 When ENTRY-FORMAT is \"bibtex\" or \"biblatex\", this function runs the hooks
 in `zotra-after-get-bibtex-entry-hook' before returning its output."
-  (unless (member zotra-backend '(citoid zotra-cli translation-server))
-    (user-error "Unknown backend: %s" zotra-backend))
-  (let* ((query-result
+  (let* ((zotra-backend
+          (if (member zotra-backend '(citoid zotra-cli zotra-server translation-server))
+              zotra-backend
+            (message "Unrecognised backend. Trying `citoid'...")
+            'citoid))
+         (query-result
           (zotra-query-url-or-search-string url-or-search-string))
          (data (car query-result))
          (endpoint (cdr query-result))
@@ -423,8 +479,8 @@ in `zotra-after-get-bibtex-entry-hook' before returning its output."
                         zotra-translation-server-supported-formats))
               entry-format
             (message (concat
-                      "The entry format \"%s\" is not supported by the backend \"%s\".\n"
-                      "Using \"bibtex\" instead...")
+                      "The entry format `%s' is not supported by the backend `%s'.\n"
+                      "Using `bibtex' instead...")
                      entry-format zotra-backend)
             "bibtex"))
          (entry-bibtex-dialect
@@ -508,19 +564,32 @@ Return the last bibtex key of the added entries."
 
 
 (defun zotra-get-attachments-1 (data &optional endpoint json)
-  (let* ((endpoint (or endpoint "web"))
-         (cli-output (zotra-run-external-command
-                      (append
-                       zotra-cli-command
-                       (list "-a")
-                       (when json "-j")
-                       (list endpoint data))
-                      t))
-         (attachments (cl-loop
-                       for item in (split-string cli-output "\n")
-                       for trimmed-item = (string-trim item)
-                       if (not (equal trimmed-item ""))
-                       collect trimmed-item)))
+  (let ((attachments
+         (cl-case zotra-backend
+           (zotra-cli
+            (let* ((endpoint (or endpoint "web"))
+                   (cli-output (zotra-run-external-command
+                                (append
+                                 zotra-cli-command
+                                 (list "-a")
+                                 (when json "-j")
+                                 (list endpoint data))
+                                t)))
+              (cl-loop
+               for item in (split-string cli-output "\n")
+               for trimmed-item = (string-trim item)
+               if (not (equal trimmed-item ""))
+               collect trimmed-item)))
+           (zotra-server
+            (zotra-maybe-start-local-server)
+            (let* ((j (zotra-get-json data endpoint))
+                   (p (json-parse-string j :object-type 'alist :array-type 'list)))
+              (flatten-tree
+               (mapcar (lambda (item)
+                         (and (equal (cdr (assoc 'itemType item)) "attachment")
+                              (not (equal (cdr (assoc 'mimeType item)) "text/html"))
+                              (cdr (assoc 'url item))))
+                       p)))))))
     (if attachments
         attachments
       (user-error "Zotra failed to find any attachments in page"))))
@@ -531,9 +600,12 @@ Return the last bibtex key of the added entries."
 If IS-SEARCH is nil, treat URL-OR-SEARCH-STRING as a url. Otherwise, treat it
 as a search identifier.
 If ALL is non-nil, return the list of attachments."
-  (when (not (equal zotra-backend 'zotra-cli))
-    (message "Fetching attachments is only supported with `zotra-cli' backend. Trying `zotra-cli'..."))
-  (let* ((zotra-backend 'zotra-cli)
+  (let* ((zotra-backend
+          (if (member zotra-backend '(zotra-cli zotra-server))
+              zotra-backend
+            (message "Fetching attachments is only supported with `zotra-cli' and `zotra-server' backends.")
+            (message "Trying `zotra-server'...")
+            'zotra-server))
          (query-result
           (zotra-query-url-or-search-string url-or-search-string))
          (data (car query-result))
