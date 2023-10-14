@@ -268,21 +268,27 @@ If SILENT-ERROR is nil and the command fails, raise a user-error."
                 (with-temp-buffer
                   (insert-file-contents output-file) (buffer-string)))
           (delete-file output-file))
-      (let* ((url-request-method (if data "POST" "GET"))
-             (url-request-extra-headers headers-alist)
-             (url-request-data (when data (encode-coding-string data 'utf-8)))
-             (response-buffer
-              (url-retrieve-synchronously url nil nil
-                                          zotra-url-retrieve-timeout)))
-        (unless response-buffer
-          (user-error "Request failed. If this issue persists, try changing `zotra-use-curl' or `zotra-backend'"))
-        (setq response-code
-              (with-current-buffer response-buffer
-                (and (boundp 'url-http-response-status) url-http-response-status)))
-        (setq output
-              (with-temp-buffer
-                (url-insert-buffer-contents response-buffer url)
-                (buffer-string)))))
+      (condition-case e
+          (let* ((url-request-method (if data "POST" "GET"))
+                 (url-request-extra-headers headers-alist)
+                 (url-request-data (when data (encode-coding-string data 'utf-8)))
+                 (response-buffer
+                  (url-retrieve-synchronously url nil nil
+                                              zotra-url-retrieve-timeout)))
+            (unless response-buffer
+              (user-error "Request failed. If this issue persists, try changing `zotra-use-curl' or `zotra-backend'"))
+            (setq response-code
+                  (with-current-buffer response-buffer
+                    (and (boundp 'url-http-response-status) url-http-response-status)))
+            (setq output
+                  (with-temp-buffer
+                    (url-insert-buffer-contents response-buffer url)
+                    (buffer-string))))
+        (file-error
+         (user-error (concat (format "%s\n" e)
+                             (unless zotra-local-server-directory
+                               "The variable `zotra-local-server-directory' is nil. ")
+                             (format "Are you sure a server is running on `%s'?" zotra-server-path))))))
     (if response-handler
         (funcall response-handler response-code output))
     output))
